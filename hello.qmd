@@ -37,7 +37,7 @@ General trait anxiety/score_GAD, as measured by sum score on the Generalized Anx
 
 Math self-efficacy/score_PISA_ME, as measured in the PISA 2012 study using the sum score of six items.
 
-General state anxiety/score_STAI_state_short, as assessed by the sum of the five-item scale STAI-SKD (Englert et al. 2011)
+General state anxiety/score_STAI_state_short, as assessed by the sum of the five-item scale STAI-SKD.
 
 Test anxiety/score_TAI_short, as measured by the sum score of the 5 items on the short version of the Test Anxiety Inventory.
 
