@@ -1,0 +1,348 @@
+---
+title: "LASSO Addendum"
+format: html
+editor: visual
+---
+
+## Addendum: Using LASSO as Feature Selection for Psychologists in R
+
+As an addendum, I will walk through the use of LASSO for feature selection on a psychological dataset in R. LASSO is a regression method that performs variable selection and regularization. LASSO is essentially an extension of ordinary least squares where a penalty term is added to the loss function, resulting in "weightings" of coefficients. The penalty term in LASSO (L1 regularization) uses absolute value, whereas the penalty term in ridge regression uses squared values (L2 regularization). LASSO can reduce a predictor's weight to 0, removing it from the model, which makes it more suitable for feature selection than ridge regression. The latter is best for handling highly collinear predictors, which we will also check soon since LASSO can handle multicollinearity, but only to an extent.
+
+LASSO uses a least-squares "shrinkage operator", so we should make sure we can fit a linear model with our AMATUS data first. We'll check assumptions and conduct exploratory data analysis.
+
+As part of the AMATUS dataset, the original researchers already calculated a correlation matrix for the variables we're interested in. This will be great to identify variance inflation later on.
+
+```{r}
+library(ggplot2)
+library(olsrr) #nice tools for linear regression
+AMASplot<-ggplot(data=amatusclean,aes(x=score_AMAS_total,y=sum_arith_perf))
+AMASplot<-AMASplot+geom_point(fill="lightskyblue1",color="black")
+AMASplot<-AMASplot+geom_count(show.legend = TRUE)
+AMASplot<-AMASplot+scale_y_continuous(breaks=seq(0, 50, 5),limits=c(0,50))
+AMASplot<-AMASplot+geom_smooth(method = "lm", se = FALSE) +
+  geom_smooth(method = "loess", se = FALSE) 
+AMASplot
+
+#modestly linear, right tail deviates. 
+
+```
+
+```{r}
+lassoamatus<-amatusclean
+ageplot<-ggplot(data=lassoamatus,aes(x=age,y=sum_arith_perf))
+ageplot<-ageplot+geom_point(fill="lightskyblue1",color="black")
+ageplot<-ageplot+geom_count(show.legend = TRUE)
+ageplot<-ageplot+scale_y_continuous(breaks=seq(0, 50, 5),limits=c(0,50))
+ageplot<-ageplot+geom_smooth(method = "lm", se = FALSE) 
+ageplot<-ageplot+geom_smooth(method = "loess", se = FALSE)
+ageplot
+#notreallylinear. A log transformation makes it look a little better.
+```
+
+```{r}
+bfiplot<-ggplot(data=lassoamatus,aes(x=score_BFI_N,y=sum_arith_perf))
+bfiplot<-bfiplot+geom_point(fill="lightskyblue1",color="black")
+bfiplot<-bfiplot+geom_count(show.legend = TRUE)
+bfiplot<-bfiplot+scale_y_continuous(breaks=seq(0, 50, 5),limits=c(0,50))
+bfiplot<-bfiplot+geom_smooth(method = "lm", se = FALSE) +
+geom_smooth(method = "loess", se = FALSE) 
+bfiplot
+#Pretty damn linear.
+```
+
+```{r}
+gadplot<-ggplot(data=lassoamatus,aes(x=score_GAD,y=sum_arith_perf))
+gadplot<-gadplot+geom_point(fill="lightskyblue1",color="black")
+gadplot<-gadplot+geom_count(show.legend = TRUE)
+gadplot<-gadplot+scale_y_continuous(breaks=seq(0, 50, 5),limits=c(0,50))
+gadplot<-gadplot+geom_smooth(method = "lm", se = FALSE) +
+geom_smooth(method = "loess", se = FALSE) 
+gadplot
+#modestly linear?
+```
+
+```{r}
+PISAplot<-ggplot(data=lassoamatus,aes(x=score_PISA_ME,y=sum_arith_perf))
+PISAplot<-PISAplot+geom_point(fill="lightskyblue1",color="black")
+PISAplot<-PISAplot+geom_count(show.legend = TRUE)
+PISAplot<-PISAplot+scale_y_continuous(breaks=seq(0, 50, 5),limits=c(0,50))
+PISAplot<-PISAplot+geom_smooth(method = "lm", se = FALSE) +
+  geom_smooth(method = "loess", se = FALSE) 
+PISAplot
+#modestly linear.
+```
+
+```{r}
+STAIplot<-ggplot(data=lassoamatus,aes(x=score_STAI_state_short,y=sum_arith_perf))
+STAIplot<-STAIplot+geom_point(fill="lightskyblue1",color="black")
+STAIplot<-STAIplot+geom_count(show.legend = TRUE)
+STAIplot<-STAIplot+scale_y_continuous(breaks=seq(0, 50, 5),limits=c(0,50))
+STAIplot<-STAIplot+geom_smooth(method = "lm", se = FALSE) +
+  geom_smooth(method = "loess", se = FALSE) 
+STAIplot
+#modestly linear, big deviation at right tail.
+```
+
+```{r}
+TAIplot<-ggplot(data=lassoamatus,aes(x=score_TAI_short,y=sum_arith_perf))
+TAIplot<-TAIplot+geom_point(fill="lightskyblue1",color="black")
+TAIplot<-TAIplot+geom_count(show.legend = TRUE)
+TAIplot<-TAIplot+scale_y_continuous(breaks=seq(0, 50, 5),limits=c(0,50))
+TAIplot<-TAIplot+geom_smooth(method = "lm", se = FALSE) +
+  geom_smooth(method = "loess", se = FALSE) 
+TAIplot
+#Pretty linear, tiny deviation at right tail.
+```
+
+```{r}
+SDQ_Mplot<-ggplot(data=lassoamatus,aes(x=score_SDQ_M,y=sum_arith_perf))
+SDQ_Mplot<-SDQ_Mplot+geom_point(fill="lightskyblue1",color="black")
+SDQ_Mplot<-SDQ_Mplot+geom_count(show.legend = TRUE)
+SDQ_Mplot<-SDQ_Mplot+scale_y_continuous(breaks=seq(0, 50, 5),limits=c(0,50))
+SDQ_Mplot<-SDQ_Mplot+geom_smooth(method = "lm", se = FALSE) +
+  geom_smooth(method = "loess", se = FALSE) 
+SDQ_Mplot
+##Vert linear, small deviation at left tail.
+
+```
+
+```{r}
+SDQ_Lplot<-ggplot(data=lassoamatus,aes(x=score_SDQ_L,y=sum_arith_perf))
+SDQ_Lplot<-SDQ_Lplot+geom_point(fill="lightskyblue1",color="black")
+SDQ_Lplot<-SDQ_Lplot+geom_count(show.legend = TRUE)
+SDQ_Lplot<-SDQ_Lplot+scale_y_continuous(breaks=seq(0, 50, 5),limits=c(0,50))
+SDQ_Lplot<-SDQ_Lplot+geom_smooth(method = "lm", se = FALSE) +
+  geom_smooth(method = "loess", se = FALSE) 
+SDQ_Lplot
+#doesn't seem really linear, to be honest.
+```
+
+## Running the Model
+
+Normally, you should naturally transform your variables to the desired distributions then run the model. In order to show you why you should do that, I will first run the model with no transformations.
+
+```{r}
+library(MASS)
+library(car)
+library(olsrr)
+
+training2<-training
+test2<-test
+View(training2)
+
+table(lassoamatus$sum_arith_perf)
+
+lambdamodel<-lm(sum_arith_perf~scale(score_AMAS_total)+sex+scale(log(age))+scale(score_BFI_N)+scale(score_GAD)+scale(score_PISA_ME)+scale(score_STAI_state_short)+scale(score_TAI_short)+scale(score_SDQ_M)+scale(score_SDQ_L), data=training2) #we're calling it lambda for reasons to be made abundantly clear shortly
+View(training2)
+##see residual/fitted plots, qq plots, and much more
+ols_plot_diagnostics(lambdamodel)
+##see residuals by variable, mostly for linearity.
+car::residualPlots(lambdamodel,
+                   pch=20, col="gray",
+                   fitted = F,
+                   ask = F, layout = c(3,2),
+                   tests = F)
+##see residuals by variable, mostly for heteroskedasticity, notice the fitted argument
+car::residualPlots(lambdamodel,
+                   pch=20, col="gray",
+                   ask = F, layout = c(3,2),
+                    fitted=T,
+                   tests = F)
+
+ggplot(lassoamatus, aes(x = sum_arith_perf)) +
+  geom_histogram(binwidth = 0.5, fill = "blue", color = "black") +
+  labs(title = "Histogram of Values", x = "Value", y = "Frequency")
+```
+
+Like we mentioned in the first document, the dependent variable was skewed right. So is our distribution of residuals, unsurprisingly. We're gonna need to try a transformation of the DV. Let's try a Box Cox transformation to center the varia- wait, we have two observations that are 0 and Box Cox doesn't work with those! We probably wouldn't lose variability if we just cut the two 0s. But that's lazy. Let's try an extremely similar transformation that can indeed handle values of 0.
+
+```{r}
+library(bestNormalize)
+#optimal lambda for Yeo-Johnson transformation?
+a<-boxCox(lambdamodel, family="yjPower", plotit = TRUE)
+optimal_lambda2 <- a$x[which.max(a$y)]
+optimal_lambda2
+#0.50505
+
+#Let's visualize it too. 
+crPlots(lambdamodel,
+             pch=20, col="gray",
+             smooth = list(smoother=car::gamLine))
+
+
+
+# Apply the Yeo-Johnson transformation manually
+yj_transform <- yeojohnson(training2$sum_arith_perf, lambda = optimal_lambda)
+training2$sum_arith_yj <- yj_transform$x.t
+# View the transformed data
+View(training2)
+
+ggplot(training2, aes(x = sum_arith_yj)) +
+  geom_histogram(binwidth = 0.3, fill = "blue", color = "black") +
+  labs(title = "Histogram of Values", x = "Value", y = "Frequency")
+
+View(training2)
+
+
+```
+
+```{r}
+#| echo: false
+transformedmodel<-lm(sum_arith_yj~scale(score_AMAS_total)+sex+scale(log(age))+scale(score_BFI_N)+scale(score_GAD)+scale(score_PISA_ME)+scale(score_STAI_state_short)+scale(score_TAI_short)+scale(score_SDQ_M)+scale(score_SDQ_L), data=training2)
+ols_plot_diagnostics(transformedmodel)
+vif(transformedmodel)
+##see residuals by variable, mostly for linearity
+car::residualPlots(transformedmodel,
+                   pch=20, col="gray",
+                   fitted = F,
+                   ask = F, layout = c(3,2),
+                   tests = F)
+##see residuals by variable, mostly for heteroskedasticity, notice the fitted argument
+car::residualPlots(transformedmodel,
+                   pch=20, col="gray",
+                   ask = F, layout = c(3,2), fitted=T,
+                   tests = F)
+```
+
+This model looks so much better it's not even funny. Much better resid/fitted plot, much better QQ plot (though with some issues we'll mention below), and of course a much more reasonable DV plot.VIF numbers seem reasonable, but we'll keep an eye on it. Notice the residual histogram has an issue - there is a tail of low residual values (which can be spotted near the bottom of the residual/fitted graph.) This indicates the model is systematically underfitting certain values around 0. The QQ plot shows that our distribution is pretty normal, but there are a couple causes for concern, namely the over/under estimation at theoretical quantile values around 2 and -2, respectively. This probably indicates some polynomial terms may be necessary to add to the model, but I will need to confirm.
+
+Just for fun, we'll also try a model just cutting the outliers and also run a model with no SDQ_L.
+
+```{r}
+#no outlier model.
+training3<-training2[-c(504, 505, 486), ]
+transformedmodel2<-lm(sum_arith_yj~scale(score_AMAS_total)+sex+scale(log(age))+scale(score_BFI_N)+scale(score_GAD)+scale(score_PISA_ME)+scale(score_STAI_state_short)+scale(score_TAI_short)+scale(score_SDQ_M)+scale(score_SDQ_L), data=training3)
+ols_plot_diagnostics(transformedmodel2)
+
+#####No SDQ_L model.
+transformedmodel3<-lm(sum_arith_yj~scale(score_AMAS_total)+sex+scale(log(age))+scale(score_BFI_N)+scale(score_GAD)+scale(score_PISA_ME)+scale(score_STAI_state_short)+scale(score_TAI_short)+scale(score_SDQ_M), data=training2)
+ols_plot_diagnostics(transformedmodel3)
+
+
+
+a<-boxCox(lambdamodel, family="yjPower", plotit = TRUE)
+optimal_lambda2 <- a$x[which.max(a$y)]
+optimal_lambda2
+```
+
+Removing the outliers cleaned up the numbers a little but didn't address the issue of mild nonlinearity at certain points for the regression model. Cutting SDQ_L did the same thing, made the QQ plot a little nicer but not so much that we don't notice that weird overfitting at the higher end of the theoretical quantiles. We'll see if we can clean up these variables a little bit more before running our models.
+
+Okay, LASSO. Let's just run it and see what we get.
+
+```{r}
+library
+R.version.string
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+library(glmnet)
+##we need to turn the dataframe into a matrix
+x2<- model.matrix(~ scale(score_AMAS_total)+sex+scale(log(age))+scale(score_BFI_N)+scale(score_GAD)+scale(score_PISA_ME)+scale(score_STAI_state_short)+scale(score_TAI_short)+scale(score_SDQ_M)+scale(score_SDQ_L) - 1, data = training2)
+View(x2)
+y2<-training2$sum_arith_yj
+y2
+
+cv_model <- cv.glmnet(x2, y2, alpha = 1) 
+
+plot(cv_model)
+
+#The upper and lower bars are the MSE +- standard error.
+best_lambda <- cv_model$lambda.min
+print(best_lambda)
+#after we set the lambda, we run the model!
+
+lassomodel <- glmnet(x2, y2, alpha = 1, lambda = best_lambda)
+
+lassomodel
+
+print(coef(lassomodel))
+View(test2)
+##put it back in the linear model for fun
+linearlassomodel<-lm(sum_arith_yj~scale(score_AMAS_total)+sex+scale(score_PISA_ME)+scale(score_STAI_state_short)+scale(score_SDQ_M)+scale(score_SDQ_L), data=training2)
+summary(linearlassomodel)
+ols_plot_diagnostics(linearlassomodel)
+
+
+
+```
+
+Keep in mind that the cross-validation we used is attempting to estimate the value of lambda that leads to the minimal prediction error. In other words, the lambda is being selected to predict the best, NOT to select the best model. The lambda that is chosen using cross validation is chosen using MSE, which may lead to a "bigger" model than if we were trying to optimize the lambda to "produce the correct model"/"select the relevant predictors".
+
+(more here: https://stats.stackexchange.com/questions/353185/why-using-cross-validation-is-not-a-good-option-for-lasso-regression)
+
+We can try this other method: "I have had much better luck applying Lasso(𝜆) to select the model and then fitting by least squares, then applying cross-validation to this entire procedure to select 𝜆. It's still not ideal, but it is a big improvement."
+
+or this "for the particular training fold, CV is applied again to find an optimal 𝜆 in that iteration; or apply CV in two batches, first a set of optimization-CV to find an optimal 𝜆 then fix that value when fitting LASSO models in a another batch set of validation-CV steps to assess model error."
+
+Let's try including the selected variables in a random forest model and see this model's stats.
+
+```{r}
+library(caret)
+set.seed(100)
+control <- trainControl(method="repeatedcv", number=10, repeats=3, search = "random")
+mtry <- 2
+
+rf_lasso <- train(sum_arith_perf~sex+scale(score_AMAS_total)+scale(score_STAI_state_short)+scale(score_PISA_ME)+scale(score_SDQ_M)+scale(score_SDQ_L), data=training2, method="rf", importance=TRUE, tuneLength=10, trControl=control)
+print(rf_lasso)
+
+
+predictionslassomodel<-predict(rf_lasso,test2)
+validationlassomodel<-data.frame(R2 = R2(predictionslassomodel, test $ sum_arith_perf), 
+		RMSE = RMSE(predictionslassomodel, test $ sum_arith_perf), 
+		MAE = MAE(predictionslassomodel, test $ sum_arith_perf))#these statistical functions are in caret technically under trainControl(), which passes this argument through defaultSummary() I believe.
+print(validationlassomodel)
+#middling prediction, pretty much the same as the two variable model actually.
+##put it back in the linear model for fun
+linearlassomodel2<-lm(sum_arith_yj~scale(score_AMAS_total)+sex+scale(score_PISA_ME)+scale(score_STAI_state_short)+scale(score_SDQ_M), data=training2)
+summary(linearlassomodel2)
+ols_plot_diagnostics(linearlassomodel2)
+
+
+
+```
+
+I want to try one more thing - I think we've established SDQ_L doesn't seem to be a very strong predictor and I think LASSO may just be selecting it due to multicollinearity with another variable. I don't think it makes the model better. Let's try without it.
+
+```{r}
+library(glmnet)
+##we need to turn the dataframe into a matrix
+x3<- model.matrix(~ scale(score_AMAS_total)+sex+scale(log(age))+scale(score_BFI_N)+scale(score_GAD)+scale(score_PISA_ME)+scale(score_STAI_state_short)+scale(score_TAI_short)+scale(score_SDQ_M) - 1, data = training2)
+View(x3)
+y3<-training2$sum_arith_yj
+y3
+
+cv_model3 <- cv.glmnet(x3, y3, alpha = 1) 
+
+plot(cv_model3)
+
+#The upper and lower bars are the MSE +- standard error.
+best_lambda <- cv_model3$lambda.min
+print(best_lambda)
+#after we set the lambda, we run the model!
+
+lassomodel3 <- glmnet(x3, y3, alpha = 1, lambda = best_lambda)
+
+lassomodel3
+
+print(coef(lassomodel3))
+#Literally the same model without SDQ_L, what a surprise.
+```
+
+```{r}
+library(caret)
+set.seed(101)
+control <- trainControl(method="repeatedcv", number=10, repeats=3, search = "random")
+mtry <- 2
+
+rf_lasso2 <- train(sum_arith_perf~sex+scale(score_AMAS_total)+scale(score_STAI_state_short)+scale(score_PISA_ME)+scale(score_SDQ_M), data=training2, method="rf", importance=TRUE, tuneLength=10, trControl=control)
+print(rf_lasso2)
+
+
+predictionslassomodel2<-predict(rf_lasso2,test2)
+validationlassomodel2<-data.frame(R2 = R2(predictionslassomodel2, test $ sum_arith_perf), 
+		RMSE = RMSE(predictionslassomodel2, test $ sum_arith_perf), 
+		MAE = MAE(predictionslassomodel2, test $ sum_arith_perf))#these statistical functions are in caret technically under trainControl(), which passes this argument through defaultSummary() I believe.
+print(validationlassomodel2)
+#better prediction. Slight improvement on the two variable model. This is likely the best model if you're looking for 4-5 variables, I'd wager.
+```
+
+So to the surprise of few people, the model with SDQ_L performed better in the linear regression framework while the model that excluded SDQ_L performed better in the random forest framework. Considering we are primarily concerned with prediction now (given our choice of lambda), the fact that we know SDQ_L is almost always excluded from our random forests and the other fact that the random forest model is often more robust at prediction, there is almost certainly an issue with SDQ_L's linearity or multicollinearity that makes it seem more important than it is in the LASSO framework, if I had to suppose.
