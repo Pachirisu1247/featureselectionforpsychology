@@ -1,6 +1,8 @@
 ---
 title: "Techniques for Variable Selection for Psychologists - Random Forest and LASSO "
-format: html
+format:
+  html: default
+  gfm: default
 knitr:
   opts_chunk: 
     collapse: true
