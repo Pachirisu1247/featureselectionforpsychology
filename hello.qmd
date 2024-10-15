@@ -118,7 +118,7 @@ ggplot(amatus,
 
 One predictor's distribution is very normal, the other isn't. I'll save you the trouble and tell you that the rest of the features are a grab bag too. Normally we wouldn't care about standardization given that this is a tree-based model. However, because we are interested in variable importance metrics (since we are focusing on feature selection), we actually do need to scale our features. This is because variable importance metrics are skewed towards predictors that have a wider range of values. So a continuous variable may return a more biased estimate in the variable importance metric than a variable that can take 3 or 4 values. So we do want to scale our variables this time around.
 
-The way we'll do it is use the scale() function within the model specification argument in each function. This will center and scale our continuous predictors. For our categorical variables, we'll simply not put that function before the predictor.
+The way we'll do it is use the `scale()` function within the model specification argument in each function. This will center and scale our continuous predictors. For our categorical variables, we'll simply not put that function before the predictor.
 
 We'll go ahead and get started by creating our first random forest model. Let's try using the caret package, a relatively general machine learning package.
 
@@ -177,7 +177,7 @@ varImpPlot(rf_scaled$finalModel, type=1)
 
 As you can see in the first model (rf_scaled), If it was up to caret, the best predictive method would have us randomly sample 1 predictor to consider splitting at each node of the decision tree. That means we probably have very few predictors that actually provide value in predicting math performance. This is expected in this dataset and in much psychological research, as we stated early on. Although an mtry=1 is too random, we clearly need to use a low mtry. The difference between the default (# of predictors/3) number for mtry and mtry=2 isn't too big, so we can stick with either for now. We'll try to set 2 as the minimum and make sure our code test a range of mtries, just in case another value ends up being better than 2 (which I don't expect to be the case).
 
-let's exclude 1 and go again and try more options.
+Let's exclude 1 and go again and try more options.
 
 ```{r}
 #| label: Excluding mtry=1
