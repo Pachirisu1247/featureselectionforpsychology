@@ -379,10 +379,9 @@ Let's test it out.
 set.seed(47)
 rf_strongestvariables <- train(sum_arith_perf~sex+score_PISA_ME+score_SDQ_M, data=scaled_training, method="rf", importance=TRUE, tuneGrid=tunegrid, trControl=control)
 print(rf_strongestvariables)
-plot(rf_strongestvariables)
 varImpPlot(rf_strongestvariables$finalModel, type=1)#type 1 refers to estimates following perturbation.
-#R2: 0.1059
-#MSE: 6.596
+#R2: 0.1022
+#MSE: 6.532
 
 
 
@@ -392,8 +391,8 @@ rf_strongestvariables2 <- train(sum_arith_perf~sex+score_SDQ_M, data=scaled_trai
 print(rf_strongestvariables2)
 plot(rf_strongestvariables2)
 varImpPlot(rf_strongestvariables2$finalModel, type=1)#type 1 refers to estimates following perturbation. 
-#R2: 0.1422
-#MSE: 6.39
+#R2: 0.117
+#MSE: 6.37
 
 
 
@@ -403,8 +402,8 @@ rf_strongestvariables3 <- train(sum_arith_perf~score_PISA_ME+score_SDQ_M, data=s
 print(rf_strongestvariables3)
 plot(rf_strongestvariables3)
 varImpPlot(rf_strongestvariables3$finalModel, type=1)#type 1 refers to estimates following perturbation. 
-#R2: 0.076
-#MSE: 6.80
+#R2: 0.062
+#MSE: 6.81
 
 
 
@@ -414,8 +413,8 @@ rf_strongestvariables4 <- train(sum_arith_perf~score_PISA_ME+sex, data=scaled_tr
 print(rf_strongestvariables4)
 plot(rf_strongestvariables4)
 varImpPlot(rf_strongestvariables4$finalModel, type=1)#type 1 refers to estimates following perturbation. 
-#R2: 0.138
-#MSE: 6.35
+#R2: 0.127
+#MSE: 6.32
 
 ```
 
@@ -694,3 +693,8 @@ print(validationlassopretest2)
 
 ```
 Overall, the best predictive model of our test set was our fourth selection, which included some anxiety variables. These anxiety variables also showed up when using different values of lambda in the LASSO model. It does indeed seem as though the inclusions of at least state anxiety and possibly test anxiety may be able to create a better predictive model than when they are excluded.
+
+
+
+
+
