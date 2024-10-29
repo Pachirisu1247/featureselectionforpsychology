@@ -8,9 +8,9 @@ editor: visual
 
 As an addendum, I will walk through the use of LASSO for feature selection on a psychological dataset in R. LASSO is a regression method that performs variable selection and regularization. LASSO is essentially an extension of ordinary least squares where a penalty term is added to the loss function, resulting in "weightings" of coefficients. The penalty term in LASSO (L1 regularization) uses absolute value, whereas the penalty term in the very-similar ridge regression uses squared values (L2 regularization, which we will discuss in the adaptive LASSO section below). LASSO can reduce a predictor's weight to 0, removing it from the model, which makes it more suitable for feature selection than ridge regression. The latter is best for handling highly collinear predictors, which we will also check soon since LASSO can handle multicollinearity, but only to an extent.
 
-LASSO uses a least-squares "shrinkage operator", so we should make sure we can fit a linear model with our AMATUS data first. We'll check assumptions and conduct exploratory data analysis.
+LASSO uses a least-squares "shrinkage operator", so we should make sure we can fit a linear model with our AMATUS data first. We'll check assumptions and conduct exploratory data analysis. It's more okay if the data seems to be less fitting of a linear model after LASSO calculation (more on this later), but we definitely want to make sure we could fit a linear model with our 10 variables as is.
 
-As part of the AMATUS dataset, the original researchers already calculated a correlation matrix for the variables we're interested in. This will be great to identify variance inflation later on.
+As part of the AMATUS dataset, the original researchers already calculated a correlation matrix for the variables we're interested in. To save you time, I'll tell you right now that the variables that are correlated with each other to a potentially problematic extent are math self-efficacy and self-concept positively (duh) and math self-concept as well as math self-efficacy with math anxiety, negatively. This shouldn't cause too many issues because LASSO and ridge regression can handle multicollinearity, but it's likely that in some models, one of these variables will be picked and the other will be ignored since they cover much of the same ground. So don't be surprised if one LASSO model picks for example SDQ_M and another picks PISA_ME, as they explain much of the same variance.
 
 ```{r}
 library(ggplot2)
@@ -124,6 +124,8 @@ SDQ_Lplot
 ```
 
 Honestly, most of these seem pretty linear, albeit with slight deviations at the ends for some. SDQ_L is pretty clearly not linear. We would probably want to use some nonlinear modeling techniques in a real analysis, something like splines or piecewise linear regression. But that is outside the scope of the paper, so we'll stick with it for now.
+
+#can maybe try splines. B-spline would have a penalty already. Is it used with LASSO or as a substitute for LASSO?
 
 ## Running the Model
 
@@ -314,18 +316,20 @@ lassomodel2$dev.ratio #is the fraction of (null) deviance explained. Pretty good
 ##GOOD IDEA: CHECK FOR DIAGNOSTIC PLOTS (AND STATS) OF YOUR TWO LASSO MODELS. SEE IF THERE ARE MANUAL PLOT COMMANDS FOR LASSO (PARTICULARLY RESIDS), COULD BE SOMETHING YOU WRITE OR WRITE UP WELL.
 ##CHECK FOR OTHER THINGS LIKE ROBUST LASSO/ADAPTIVE LASSO ETC. SEE WHAT WOULD FIT YOUR DATA BEST. PROBABLY SOMETHING THAT GIVES ROBUST ERRORS DUE TO YOUR MILD HETEROSKEDASTICITY.
 #THE ROBUSTIFICATION OF THE LASSO AND ELASTIC NET DISSERTATION BY (?MATT MULTACH)
-
+vif(lassomodel)
 
 
 ```
 
-Keep in mind that the cross-validation we used is attempting to estimate the value of lambda that leads to the minimal prediction error. In other words, the lambda is being selected to predict the best, NOT to select the best model. The lambda that is chosen using cross validation is chosen using MSE, which may lead to a "bigger" model than if we were trying to optimize the lambda to "produce the correct model"/"select the relevant predictors". This is a huge caveat, and something you need to consider when you are thinking about WHY you are using LASSO. You can read more at the following link:
+Keep in mind that the cross-validation we used is attempting to estimate the value of lambda that leads to the minimal prediction error. In other words, the lambda is being selected to predict the best, NOT to select the "best" model. The lambda that is chosen using cross validation is chosen using MSE, which may lead to a "bigger" model than if we were trying to optimize the lambda to "produce the correct model"/"select the relevant predictors". This is a huge caveat, and something you need to consider when you are thinking about WHY you are using LASSO. You can read more at the following link:
 
 (more here: https://stats.stackexchange.com/questions/353185/why-using-cross-validation-is-not-a-good-option-for-lasso-regression)
 
 You can "I have had much better luck applying Lasso(𝜆) to select the model and then fitting by least squares, then applying cross-validation to this entire procedure to select 𝜆. It's still not ideal, but it is a big improvement."
 
 or this "for the particular training fold, CV is applied again to find an optimal 𝜆 in that iteration; or apply CV in two batches, first a set of optimization-CV to find an optimal 𝜆 then fix that value when fitting LASSO models in a another batch set of validation-CV steps to assess model error."
+
+###might be better to just see what variables are being used in the lowest prediction error model? or which variables tend to have the lowest prediction error? Can always try this other perspective, or at LEAST discuss it further than what I currently have. Dr. Lai doesn't really believe in "true" models, for example.
 
 ```{r}
 # Design matrix and response vector
@@ -627,7 +631,9 @@ The more stringent lambda reported the same coefficients as the ridge adaptive l
 
 Allaire, J.J., Teague, C., Scheidegger, C., Xie, Y., & Dervieux C. (2024). Quarto version 1.4. https://github.com/quarto-dev/quarto-cli
 
-Brownlee, J. (2020, July 30). *Tune machine learning algorithms in R (random forest case study)*. MachineLearningMastery.com. https://machinelearningmastery.com/tune-machine-learning-algorithms-in-r/ .
+Brownlee, J. (2017, December 12th). *Project-oriented Workflow*. Tidyverse.org. https://machinelearningmastery.com/tune-machine-learning-algorithms-in-r/ .
+
+Bryan, J. (2020, July 30). *Tune machine learning algorithms in R (random forest case study)*. MachineLearningMastery.com.https://www.tidyverse.org/blog/2017/12/workflow-vs-script/
 
 Cipora, K., Lunardon, M., Masson, N., Georges, C., Nuerk, H.-C., & Artemenko, C. (2024). The AMATUS Dataset: Arithmetic Performance, Mathematics Anxiety and Attitudes in Primary School Teachers and University Students. *Journal of Open Psychology Data*, *12*. https://doi.org/10.5334/jopd.115
 
@@ -650,6 +656,8 @@ Tay, J.K. (2021, February 19). *The box-cox and Yeo-Johnson transformations for 
 Tay J.K, Narasimhan B., Hastie T. (2023). "Elastic Net Regularization Paths for All Generalized Linear Models." *Journal of Statistical Software*, *106*(1), 1--31. [doi:10.18637/jss.v106.i01](https://doi.org/10.18637/jss.v106.i01).
 
 Tibshirani, R.J., Taylor, J., Lockhart, R., & Tibshirani, R. (2016). Exact Post-Selection Inference for Sequential Regression Procedures. *Journal of the American Statistical Association*, *111*(514), 600--620. https://doi.org/10.1080/01621459.2015.1108848
+
+Yoshida, K. (2017). Adaptive Lasso. *Rpubs by RStudio. https://rpubs.com/kaz_yos/alasso*
 
 Zou, H. (2006). The Adaptive Lasso and Its Oracle Properties. *Journal of the American Statistical Association*, *101*(476), 1418--1429. https://doi.org/10.1198/016214506000000735
 
@@ -674,3 +682,7 @@ https://stats.stackexchange.com/questions/156098/cross-validating-lasso-regressi
 https://stats.stackexchange.com/questions/403310/per-cent-increase-in-mse-incmse-random-forests-importance-measure-why-is-mea
 
 https://stackoverflow.com/questions/71900366/randomforest-error-this-function-only-works-for-objects-of-class-rfsrc-grow
+
+https://stats.stackexchange.com/questions/485471/when-in-adaptive-lasso-process-does-it-make-sense-to-constrain-control-variable
+
+https://stats.stackexchange.com/questions/487412/is-this-the-correct-way-to-run-an-adaptive-lasso
