@@ -12,9 +12,9 @@ knitr:
 
 ## Random Forest for Regression for Psychologists in R - An Example
 
-In this document, I will walk through a random forest variable selection procedure for a psychological dataset. The dataset is extremely characteristic of many psychology datasets - it has an okay but not at all large sample size (735 N before being split into test/training sets), a relatively high number of potential predictors (20+ collected as part of the survey, many of which are likely completely unhelpful in prediction), and what is likely middling effect sizes for predictors. The focus of the model will be regression and we will be primarily discussing model error and predictive power, though you'll see it's not our only concern. We'll review a few different ways of creating models, selecting features, and evaluating models.
+In this document, I will walk through a random forest variable selection procedure for a psychological dataset. The dataset is extremely characteristic of many psychology datasets---it has an okay but not at all large sample size (735 N before being split into test/training sets), a relatively high number of potential predictors (20+ collected as part of the survey, many of which are likely completely unhelpful in prediction), and what are likely middling effect sizes for predictors. The focus of the model will be regression, and we will be primarily discussing model error and predictive power, though you'll see it's not our only concern. We'll review a few different ways of creating models, selecting features, and evaluating models.
 
-However, be aware that this is not a tutorial on identifying the absolute best predictive model, which is desribed ad infinitum elsewhere. I will touch on using algorithmic methods to identify the "optimal" subset of predictors in a full model, but the recursive/backwards selection-style procedure I walk through this walkthrough is primarily intended to be
+However, be aware that this is not a tutorial on identifying the absolute best predictive model, which is described ad infinitum elsewhere. I will touch on using algorithmic methods to identify the "optimal" subset of predictors in a full model, but the recursive/backwards selection-style procedure I walk through in this walkthrough is primarily intended to be.
 
 One more note: the best feature selection method will always be expert knowledge on which variables are likely to explain the majority of the variance/signal as well as which less-important variables are likely to provide valuable interactions.
 
@@ -22,62 +22,65 @@ I have not seen the data ahead of time. The analyses described hereafter are ent
 
 ## The Data
 
-Importantly, we are conducting a regression task, not a classification task, as our dependent variable is continuous. The main task we'll be attempting to address is the following - we would like to predict arithmetic performance score in German students from a set of predictor variables including age, sex, self-reported math anxiety, self-reported math self-concept, and others. Our second main task is that we would like to identify which of these variables are actually useful in predicting arithmetic performance and which ones are not, so future researchers do not have to waste resources collecting unimportant variables for minimal improvement in prediction. In other words, we would like a concise model. This data was originally gathered and shared by Cipora et al. (2024).
+<!-- HL: suggest to use --- for em dashes -->
 
-Since the dataset contains over 40 potential predictor variables and only around 735 N pre-training/test split, I have selected ten variables from the dataset at pseudo-random for our analysis. For the purposes of this document, only these ten variables "exist". Below, I will list the ten variables we are interested in studying as predictors of arithmetic performance score followed by the syntax for their object in R. All assessments were in German.
+Importantly, we are conducting a regression task, not a classification task, as our dependent variable is continuous. The main task we'll be attempting to address is the following---we would like to predict arithmetic performance score in German students from a set of predictor variables including age, sex, self-reported math anxiety, self-reported math self-concept, and others. Our second main task is that we would like to identify which of these variables are actually useful in predicting arithmetic performance and which ones are not, so future researchers do not have to waste resources collecting unimportant variables for minimal improvement in prediction. In other words, we would like a concise model. This data was originally gathered and shared by Cipora et al. (2024). <!-- HL: can use citation syntax in quarto: https://quarto.org/docs/authoring/citations.html -->
+
+Since the dataset contains over 40 potential predictor variables and only around <!-- HL: this part is unclear --> 735 N pre-training/test split, I have selected ten variables from the dataset at pseudo-random for our analysis. For the purposes of this document, only these ten variables "exist". Below, I will list the ten variables we are interested in studying as predictors of arithmetic performance score followed by the syntax for their object in R. All assessments were in German.
 
 ***Dependent Variable:***\
-Arithmetic performance/sum_arith_perf., as measured by "the number of correctly solved problems in order as instructed" on a simple arithmetic speed test.
+Arithmetic performance/`sum_arith_perf` <!-- HL: use `` for variable names -->, as measured by "the number of correctly solved problems in order as instructed" on a simple arithmetic speed test.
 
 ***Predictors:***\
-Age/age, as measured in years
+Age/`age`, as measured in years.
 
-Sex/sex, where 1 = male, 2 = female, and 3=other. Participants who ignored this question were removed.
+Sex/`sex`, where 1 = male, 2 = female, and 3=other. Participants who ignored this question were removed.
 
-Neuroticism/score_BFI_N, as measured by the sum score of the 8 items of the Big Five Inventory (short version) pertaining to neuroticism.
+Neuroticism/`score_BFI_N`, as measured by the sum score of the 8 items of the Big Five Inventory (short version) pertaining to neuroticism.
 
-Math anxiety/score_AMAS_total, as measured by the sum score on the Abbreviated Math Anxiety Scale.
+Math anxiety/`score_AMAS_total`, as measured by the sum score on the Abbreviated Math Anxiety Scale.
 
-General trait anxiety/score_GAD, as measured by sum score on the Generalized Anxiety Disorder Screener (GAD-7).
+General trait anxiety/`score_GAD`, as measured by sum score on the Generalized Anxiety Disorder Screener (GAD-7).
 
-Math self-efficacy/score_PISA_ME, as measured in the PISA 2012 study using the sum score of six items.
+Math self-efficacy/`score_PISA_ME`, as measured in the PISA 2012 study using the sum score of six items.
 
-General state anxiety/score_STAI_state_short, as assessed by the sum of the five-item scale STAI-SKD.
+General state anxiety/`score_STAI_state_short`, as assessed by the sum of the five-item scale STAI-SKD.
 
-Test anxiety/score_TAI_short, as measured by the sum score of the 5 items on the short version of the Test Anxiety Inventory.
+Test anxiety/`score_TAI_short`, as measured by the sum score of the 5 items on the short version of the Test Anxiety Inventory.
 
-Math self-concept/score_SDQ_M, as measured by the sum score of the four math-related statements on the Self-Description Questionnaire III. Evaluates variables such as one's comfort/enjoyment/pride with math, whereas self-efficacy evaluates one's self-confidence in math abilities.
+Math self-concept/`score_SDQ_M`, as measured by the sum score of the four math-related statements on the Self-Description Questionnaire III. Evaluates variables such as one's comfort/enjoyment/pride with math, whereas self-efficacy evaluates one's self-confidence in math abilities.
 
-Language self-concept/score_SDQ_L, as measured by the sum score of the four language-related statements on the Self-Description Questionnaire III.
+Language self-concept/`score_SDQ_L`, as measured by the sum score of the four language-related statements on the Self-Description Questionnaire III.
 
-## 
+## <!-- HL: Add more subheads -->
 
 We'll start with importing and cleaning the data to make sure it fits our task.
+
+<!-- HL: the `stats` package is built-in and doesn't need to be loaded. `tidyverse` loads some other packages too. -->
 
 ```{r}
 #| label: Load packages, clean data
 #| warning: false
 library(here)
-set_here("/Users/frankie/Desktop/Dr. Lai Feature Selection Project 9.13.24/Main Script") #using this to demonstrate how you can set it to what you want
-
+# set_here("/Users/frankie/Desktop/Dr. Lai Feature Selection Project 9.13.24/Main Script") #using this to demonstrate how you can set it to what you want
 library(tidyverse)
 library(caret)
 library(readxl)
-library(readr)
-library(ggplot2)
 library(randomForest)
-library(stats)
 ```
 
-So "here" is apparently `r print(here())` for me. "Here" on your computer will be whatever the top level folder of the current project folder is. You can set it using the set_here function, but I recommend sticking your work in one folder with subfolders.You don't even need to worry about working directories if you use the here function. Yay!
+So "here" is apparently `r print(here())` for me. "Here" on your computer will be whatever the top level folder of the current project folder is. You can set it using the `set_here()` function, but I recommend sticking your work in one folder with subfolders.You don't even need to worry about working directories if you use the here function. Yay!
 
-Below, we'll again use the here function to tell the readr function where to go to get the dataset. Our data was stored in the Main Script folder, in a subfolder called OSF archive, and named AMATUS_dataset.csv. Use that info to read the code below. Notice how we use a normalizePath function to convert relative or incomplete path names to absolute path names. That way, we don't have to worry too much about people using
+Below, we'll again use the here function to tell the readr function where to go to get the dataset. Our data was stored in the Main Script folder, in a subfolder called OSF archive, and named "AMATUS_dataset.csv." Use that info to read the code below. Notice how we use a `normalizePath()` <!-- HL: we generally use `fun()` to denote R function --> function to convert relative or incomplete path names to absolute path names. That way, we don't have to worry too much about people using
+
+<!-- HL: Since you'll be using the `amatusclean` dataset, would it make sense to do as.factor() on the cleaned data set? -->
 
 ```{r}
+# HL: You can use the link directly
+file_path <- normalizePath(here::here("OSF archive/AMATUS_dataset.csv"))
+# file_path <- url("https://osf.io/download/wzrqb/")
 
-file_path<-normalizePath(here::here("OSF archive/AMATUS_dataset.csv")). 
-
-amatus <- read_csv2(file_path, c("", "NA"), col_names=TRUE) #it's already in the "working directory" of the main script folder, so we only need the subfolder OSF archive and the actual name of the dataset.
+amatus <- read_csv2(file_path, c("", "NA"), col_names = TRUE) # it's already in the "working directory" of the main script folder, so we only need the subfolder OSF archive and the actual name of the dataset.
 
 View(amatus)
 # We can use this command to view our data.
@@ -85,12 +88,16 @@ table(amatus$sum_arith_perf)
 
 
 #### Just some regular old data cleaning to start with.
-amatus$sex <- as.factor(amatus$sex)
-amatus$age_range <- as.factor(amatus$age_range)
-amatus$breaks <- as.factor(amatus$breaks)
-amatus$honesty <- as.factor(amatus$honesty)
-amatus$native_speaker <- as.factor(amatus$native_speaker)
-amatus$noise <- as.factor(amatus$noise)
+# HL: Alternative code
+amatus <- amatus |>
+    mutate(across(c("sex", "age_range", "breaks", "honesty", "native_speaker", "noise"),
+           .fns = as_factor))
+# amatus$sex <- as.factor(amatus$sex)
+# amatus$age_range <- as.factor(amatus$age_range)
+# amatus$breaks <- as.factor(amatus$breaks)
+# amatus$honesty <- as.factor(amatus$honesty)
+# amatus$native_speaker <- as.factor(amatus$native_speaker)
+# amatus$noise <- as.factor(amatus$noise)
 
 amatusclean <- amatus[!is.na(amatus$sum_arith_perf), ] # removing the individuals who did not complete the performance test in order as instructed
 amatusclean <- amatusclean[!(amatusclean$sample %in% c("german_teachers", "belgian_teachers")), ] # removing the other two samples from the dataset
@@ -99,8 +106,13 @@ View(amatusclean)
 
 Now, we'll just check out a quick histogram of the dependent variable, arithmetic math performance.
 
+<!-- HL: I think a histogram is more appropriate given the outcome is somewhat discrete. Also, should we use amatusclean? -->
+
+<!-- HL: Consider adding a caption to the figures. I give an example below. -->
+
 ```{r}
-#| label: Arithmetic Score Histogram
+#| label: fig-arith-perf
+#| fig-cap: "Distribution of outcome variable: Arithmetic Math Performance"
 #| warning: false
 #| echo: false
 
@@ -109,6 +121,7 @@ ggplot(
   aes(x = sum_arith_perf)
 ) +
   geom_density(fill = "lightblue", alpha = 0.7) +
+  # HL: you can use theme_set(theme_minimal()) in the beginning to set the style for all graphs.
   theme_minimal()
 ```
 
@@ -135,11 +148,13 @@ ggplot(
 
 One predictor's distribution is very normal, the other isn't. I'll save you the trouble and tell you that the rest of the features are a grab bag too. Normally we wouldn't care too much about standardization given that this is a tree-based model. However, because we are interested in variable importance metrics (since we are focusing on feature selection), we actually do need to scale our features. This is because variable importance metrics are skewed towards predictors that have a wider range of values. So a continuous variable may return a more biased estimate in the variable importance metric than a variable that can take 3 or 4 values. So we have to scale our variables to avoid biased estimates of their importance.
 
-The way we'll do it is use the scale() function within the model specification argument in each function. This will center and scale our continuous predictors. For our categorical variables, we'll simply not put that function before the predictor.
+The way we'll do it is use the `scale()` function within the model specification argument in each function. This will center and scale our continuous predictors. For our categorical variables, we'll simply not put that function before the predictor.
 
-We'll go ahead and get started by creating our first random forest model. Let's try using the caret package, a relatively general machine learning package.
+We'll go ahead and get started by creating our first random forest model. Let's try using the `caret` package, a relatively general machine learning package.
 
 A side note: There are several different validation methods you can use in caret, including bootstrapping, cross-validation, and repeated cross-validation. Repeated cross-validation should always be used when computationally appropriate. Bootstrapping may be compelling here due to the small dataset, but repeated cross-validation is just as good as bootstrap in smaller samples and should do the job for us.
+
+<!-- HL: I'm missing `mtry` in the following code as it doesn't run -->
 
 ```{r}
 #| label: First model setup
@@ -173,7 +188,6 @@ categorical_variable <- "sex"
 response_variable <- "sum_arith_perf"
 
 # Create a new dataframe by scaling and centering numeric predictors
-library(dplyr)
 scaled_training <- training %>%
   mutate(across(all_of(numeric_predictors), ~ scale(.) %>% as.vector())) %>% # Scale and convert back to vector
   select(all_of(numeric_predictors), all_of(categorical_variable), all_of(response_variable)) # Select only the relevant columns
