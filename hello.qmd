@@ -224,7 +224,7 @@ varImpPlot(rf_scaled$finalModel, type = 1)
 
 As you can see in the first model (rf_scaled), If it was up to caret, the best predictive method would have us randomly sample 1 predictor to consider splitting at each node of the decision tree. That means we probably have very few predictors that actually provide value in predicting math performance. This is expected in this dataset and in much psychological research, as we stated early on. Although an mtry=1 is too random, we clearly need to use a low mtry. The difference between the default (# of predictors/3) number for mtry and mtry=2 isn't too big, so we can stick with either for now. We'll try to set 2 as the minimum and make sure our code test a range of mtries, just in case another value ends up being better than 2 (which I don't expect to be the case).
 
-let's exclude 1 and go again and try more options.
+Let's exclude 1 and go again and try more options.
 
 ```{r}
 #| label: Excluding mtry=1
