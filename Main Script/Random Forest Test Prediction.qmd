@@ -6,7 +6,7 @@ editor: visual
 
 ## Predictions on Test Set
 
-Time to test the predictive power of each of our random forest models on the test set of data. Although you should keep in mind that the test set is a "random sample" as much as the training set is, the idea of predictive accuracy is to be able to effectively predict new data, so good predictive accuracy on a test set implies underlying robustness of the predictive model since it is likely not overfitting to the training data.
+It's time to test the predictive power of each of our random forest models on the test set of data. Although you should keep in mind that the test set is a "random sample" as much as the training set is, the idea of predictive accuracy is to be able to effectively predict new data, so good predictive accuracy on a test set implies underlying robustness of the predictive model since it is likely not overfitting to the training data.
 
 ***Prediction Evaluation***
 First, let's scale the test data as we did in the original random forest document. Our data import and cleaning code is copied over, so read that document for more detailed notes about how we ended up with the 'amatusclean' dataset. 

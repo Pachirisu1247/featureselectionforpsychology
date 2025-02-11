@@ -8,7 +8,7 @@ editor: visual
 
 As an aside, I will provide several examples of explicit automated methods for variable selection in random forest models. VSURF, the first method I will describe, essentially uses backward stepwise selection followed by forward selection based on variable importance (using a basic definition as we used above being, depending on the task, the difference between MSE/misclassification rate after permuting each predictor). There have been several methods for variable selection described in the literature, however, a recent simulation study demonstrated that VSURF often demonstrates some of the best performance for classification tasks (Speiser et al.), which may extend to regression. However, it is worth noting that VSURF is prediction oriented and as such, accepts the risk of producing false negatives.
 ***Importing the Data***
-Below, I will repeat the data import and cleaning code from the original blog post regarding variable selection in Random Forest models. We are again using the AMATUS dataset.
+Below, I will reprint the data import and cleaning code from the original blog post regarding variable selection in Random Forest models. We are again using the AMATUS dataset.
 ```{r}
 #| label: Load packages, clean data
 #| warning: false
