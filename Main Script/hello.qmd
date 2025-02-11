@@ -1,5 +1,5 @@
 ---
-title: "Intermediate Models for Prediction and Variable Selection for Psychologists - Random Forest and LASSO"
+title: "Intermediate Models for Prediction and Variable Selection for Psychologists - Random Forest"
 author: Francisco N. Ramos
 format: pdf
 knitr:
@@ -21,29 +21,31 @@ theme_set(theme_minimal())
 
 ## Intermediate Statistical Models for Prediction and Variable Selection for Psychologists - Random Forest and LASSO
 
-Should start w explaining less about variable selection and way more about why LASSO and random forest are each good and great.
+In this document, I will walk through a random forest model and variable selection procedure on a psychological dataset. Although random forest models are better explained elsewhere, to be brief, random forest models are built from single decision trees, which predict a dependent variable (continuous or binary, depending on whether you are interested in regression or classification respectively) based on binary answers to other questions. For example, a tree might first check "Is the social anxiety score over or under 10.5?", with a "Yes" leading to a different prediction adjustment than a "No", then it will continuously repeat the process with new questions like "Is sex male or female?", until it has finalized its prediction. A random forest model is built from averaging the observations of thousands or more trees, all of which ask different "questions" (another tree might start with "Is social anxiety score over or under 11.3?").
 
-In this document, I will walk through a random forest variable selection procedure for a psychological dataset. The dataset is extremely characteristic of many psychology datasets --- it has an okay but not at all large sample size (735 N before being split into test/training sets), a relatively high number of potential predictors (20+ collected as part of the survey, many of which are likely completely unhelpful in prediction), and what is likely middling to low effect sizes for predictors. The focus of the model will be regression and we will be primarily discussing model error and predictive power, and alternating focuses between the two. We'll review a few different ways of creating models, selecting features, and evaluating models.
+Random forest models are often accurate and robust (though they can overfit), can handle missing and categorical data as well as problems where the number of predictors exceeds the sample size, and frankly are not too difficult to implement, though they can be difficult to interpret.
 
-However, be aware that this is not a tutorial on identifying the absolute best predictive model, which is described ad infinitum elsewhere. I will touch on using algorithmic methods to identify the "optimal" subset of predictors in a full model, but if you are merely looking for "the best model to fit my data" or "the best way to predict outcome from a set of predictors", this document will likely not be the most helpful.
+Please be aware that this is not a tutorial on identifying the absolute best predictive model, which is described ad infinitum elsewhere.
 
-Another note: we will be partially demonstrating what statisticians would call "stepwise selection", "backwards selection" to be specific. Let me just be clear - backwards selection is NEVER the best way to do variable selection. The best feature selection method will always be expert knowledge on which variables are likely to explain the majority of the variance/signal as well as which less-important variables are likely to provide valuable interactions. If possible, you should either a priori identify the subset of variables to evaluate OR if you must use data-driven selection, try to use automated methods with clear "reward" and "loss" functions so you better understand why it has penalized what it penalized and why it has selected what it selected. Backwards selection has the nasty little habit of occasionally overemphasizing variables that actually have little relationship with the DV because they happen to "fit in" nicely with the other variables, making the variable appear important in the specific models backwards selection evaluates, but the variable may be unimportant in the "true" best model for prediction (or the model containing the "true" subset of actually important variables, if you believe in that). We are going through stepwise selection because it is common but more importantly because it does help you better understand the relationships between variables in the specific model, and it is easy to run an automated method without really thinking about why those variables have been selected and what it is showing you. Examples of three various potential automated methods are provided before the end of this document, however.
+Another note: for didactic purposes, we will be using a method that is essentially what statisticians would call "stepwise selection", "backwards selection" to be specific. Let me just be clear - backwards selection is essentially NEVER the best way to do variable selection. We are simply going through stepwise selection as a tool to help discuss the relationships between variables in specific models. If possible, you should either a priori identify the subset of variables (or interactions between variables) to evaluate based on previous literature and expert knowledge OR, if you must, use purely data-driven selection, e.g. automated methods with clear "reward" and "loss" functions (which we will show examples of later).
 
 I have not seen the data ahead of time. The analyses described hereafter are entirely novel.
 
 ## The Data
 
-Importantly, we are conducting a regression task, not a classification task, as our dependent variable is continuous. The main task we'll be attempting to address is the following --- we would like to predict arithmetic performance score in German students from a set of predictor variables including age, sex, self-reported math anxiety, self-reported math self-concept, and others. Our second main task is that we would like to identify which of these variables are actually useful in predicting arithmetic performance and which ones are not, so future researchers do not have to waste resources collecting unimportant variables for minimal improvement in prediction. In other words, we would like a concise model. This data was originally gathered and shared by Cipora et al. (2024). References are at the end of the LASSO addendum to this document.
+Importantly, we are conducting a regression task, not a classification task, as our dependent variable is continuous. The first main task we'll be attempting to address is that we would like to predict arithmetic performance score in German students from a set of predictor variables including age, sex, self-reported math anxiety, and others. Our second main task is that we would like to have a good sense of which predictor variables appear useful in predicting arithmetic performance and which ones are not, so future researchers do not have to waste resources collecting unimportant variables for no or minimal improvement in prediction.
 
-The dataset contains over 40 variables that are candidates to be predictor variables, and only contains a total of 735 participants pre-training/test split (ignoring the separate sample contained in the dataset which we will remove before analysis). To simplify this explanation, I have selected ten variables from the dataset at pseudo-random for our analysis. For the purposes of this document, only these ten variables "exist". Below, I will list the ten variables we are interested in studying as predictors of arithmetic performance score followed by the syntax for their object in R. All assessments were in German.
+The dataset we will investigate in this document is characteristic of many psychology datasets --- it has a good but not at all large sample size (735 N before being split into test/training sets), a relatively high number of potential predictors (20+ collected as part of the survey, many of which are likely completely unhelpful in prediction), and what is likely middling to low effect sizes for predictors. To simplify our explanation, I have arbitrarily selected ten variables from the dataset for our analysis (don't do that in your real work). For the purposes of this document, only these ten variables "exist". References (including the dataset) are at the end of the LASSO addendum to this document.
+
+Below, I will list the ten variables we are interested in studying as predictors of arithmetic performance score followed by the syntax for their object in R.
 
 ***Dependent Variable:***\
-Arithmetic performance/sum_arith_perf., as measured by "the number of correctly solved problems in order as instructed" on a simple arithmetic speed test.
+Arithmetic performance/`sum_arith_perf`, as measured by "the number of correctly solved problems in order as instructed" on a simple arithmetic speed test.
 
 ***Predictors:***\
-Age/'age', as measured in years
+Age/`age`, as measured in years.
 
-Sex/'sex', where 1 = male, 2 = female, and 3=other. Participants who ignored this question were removed.
+Sex/`sex`, where 1 = male, 2 = female, and 3=other. Participants who ignored this question were removed.
 
 Neuroticism/`score_BFI_N`, as measured by the sum score of the 8 items of the Big Five Inventory (short version) pertaining to neuroticism.
 
@@ -63,15 +65,15 @@ Language self-concept/`score_SDQ_L`, as measured by the sum score of the four la
 
 Arithmetic performance/`sum_arith_perf`, as measured by "the number of correctly solved problems in order as instructed" on a simple arithmetic speed test.
 
-***Cleaning the data and a little EDA***
+***Cleaning the data and a little Exploratory Data Analysis***
 
 We'll start with importing and cleaning the data to make sure it fits our task.
 
 ```{r}
 #| label: Load packages, clean data
 #| warning: false
+#| 
 library(here)
-
 library(tidyverse)
 library(caret)
 library(readxl)
@@ -80,50 +82,39 @@ library(ggplot2)
 library(randomForest)
 ```
 
-The `here()\` function is extremely convenient for creating paths and directories that won't break when files are moved or when you reproduce the work on another computer. "Here" on your computer will be whatever the top level folder of the current project folder is (which you set up when initializing a project). Looks like "here" for me is `r here()` You can also set it using the `set_here` function. You can specify subfolders using a comma, then quotation marks to define the name of each folder or file.You don't even need to worry about working directories if you use the here function.
+The `here()\` function is extremely convenient for creating paths and directories that won't break when files are moved or when you reproduce the work on another computer. More information is available at the following URL: https://here.r-lib.org/
 
-Below, we'll again use the here function to tell the readr function where to go to get the dataset. Our data was stored in the "Main Script" folder, in a subfolder called "OSF archive", and named "AMATUS_dataset.csv". Use that info to read the code below. Notice how we use a `normalizePath` function to convert relative or incomplete path names to absolute path names. That way, we don't have to worry too much about Mac vs. Windows or cloud vs. local.
+Below, we'll again use the here function to tell the `readr()` function where to go to get the dataset. Our data was stored in the "Main Script" folder, in a subfolder called "OSF archive", and named "AMATUS_dataset.csv". Use that info to read the code below. Notice how we use a `normalizePath()` function to convert relative or incomplete path names to absolute path names, which helps when switching OSes or from cloud to local storage.
 
 ```{r}
 here::i_am("Dr. Lai Feature Selection Project 9.13.24.rproj")
-#If you'd like to, you can manually set your path with the command above. #I've set it to my rproj file
-#Otherwise, just check with the following
-#command:
-here::here()
+#I manually set "here" to the folder containing my rproj file. 
 
-# adjust as needed.
 file_path <- normalizePath(here::here("Main Script/OSF archive/AMATUS_dataset.csv"))
-# adjust as needed.
+# Also adjust this as needed.
 
+#Importing dataset
 amatus <- read_csv2(file_path, c("", "NA"), col_names = TRUE) 
-# it's already in the "working directory" of the main script folder, 
-# so we only need the subfolder OSF archive and the actual name of the dataset.
+# Note that the c() function is defining
+#what NA values look like for the import function.
 
 View(amatus)
-# We can use this command to view our data.
-table(amatus$sum_arith_perf)
+# Best command to view data, in my opinion.
 
 amatusclean <- amatus[!is.na(amatus$sum_arith_perf), ] 
-# removing the individuals who did not complete the performance test in order as instructed.
+# Removing the individuals who did not complete the performance test in order as instructed.
 amatusclean <- amatusclean[!(amatusclean$sample %in% 
 c("german_teachers", "belgian_teachers")), ] 
-# removing the other two samples from the dataset
+# Removing the 2 teacher samples from the dataset, as we are only interested in the student sample.
 
-#Just some regular old data cleaning to start with.
-amatusclean$sex <- as.factor(amatusclean$sex)
-amatusclean$age_range <- as.factor(amatusclean$age_range)
-amatusclean$breaks <- as.factor(amatusclean$breaks)
-amatusclean$honesty <- as.factor(amatusclean$honesty)
-amatusclean$native_speaker <- as.factor(amatusclean$native_speaker)
-amatusclean$noise <- as.factor(amatusclean$noise)
-
-amatusclean <- amatus[!is.na(amatus$sum_arith_perf), ] # removing the
-# individuals who did not complete the performance test in order as instructed
-amatusclean <- amatusclean[!(amatusclean$sample %in% 
-c("german_teachers", "belgian_teachers")), ] 
-# removing the other two samples from the dataset
-
-View(amatusclean)
+#Data cleaning:
+amatusclean <- amatusclean %>%
+  filter(!is.na(sum_arith_perf)) %>%
+  mutate(across(c(sex, age_range, breaks, honesty, native_speaker, noise), as.factor)) 
+# `filter()` removes the
+# individuals who did not complete the performance # test in order as instructed, `mutate`
+# applies the `as.factor()` function to all 
+# categorical (factor) variables.
 ```
 
 Now, we'll just check out a quick histogram of the dependent variable, arithmetic math performance.
@@ -137,10 +128,13 @@ ggplot(
   aes(x = sum_arith_perf)
 ) +
   geom_density(fill = "lightblue", alpha = 0.7) +
-  theme_minimal() # I also set up the theme globally in hidden code at the top of this doc.
+  theme_minimal() 
+# I set up the theme for all plots in hidden code, # so i won't include it again after this.
 ```
 
-As you might expect from test scores, our data is clearly skewed right (@fig-arith-perf). There's no missing data for our outcome/Y variable of performance since we are not interested in participants who answered out of order against instructions. Let's also look at some predictors.
+Our data is clearly skewed right (@fig-arith-perf). This indicates that most people scored around the "low" end of all possible values.
+
+Let's also look at some predictors.
 
 ```{r}
 #| label: fig-AMAS-BFI_N
@@ -158,11 +152,13 @@ ggplot(
   geom_density(fill = "lightblue", alpha = 0.7) 
 ```
 
-One predictor's distribution is very normal, the other isn't. I'll save you the trouble and tell you that the rest of the features are a grab bag too. Normally we wouldn't care about standardization given that random forest is a tree-based model. However, because we are interested in variable importance metrics (since we are trying to focus on feature selection), we actually do need to scale our features. This is because variable importance metrics are skewed towards predictors that have a wider range of values. So a continuous variable may return a more biased estimate in the variable importance metric than a variable that can take 3 or 4 values. So we do want to scale our variables this time around.
+One predictor's distribution is very normal, the other isn't. The rest of the features are a grab bag too. Luckily, distribution doesn't really matter for random forest models.
 
-We'll show code for an alternative way of scaling predictors, but the way we will choose to do it is use the `scale()` function to create a scaled training set. This will center (subtract mean from the value for a mean of 0) and scale (divide value by its standard deviation for an SD of 1) our continuous predictors. The training set will then only include the scaled variables. For our categorical variables, just remember not to worry about the scale function. We'll go ahead and get started by creating our first random forest model. Let's try using the `caret` package, a relatively general machine learning package.
+Normally, we wouldn't care about standardization of our variables given that random forest is a tree-based model. However, because we are interested in variable importance metrics (since we are partly focusing on feature selection), we actually do need to scale our features. This is because variable importance metrics are skewed towards predictors that have a wider range of values.
 
-A side note: There are several different validation methods you can use in caret, including bootstrapping, cross-validation, and repeated cross-validation. Repeated cross-validation should always be used when computationally appropriate. Bootstrapping may be compelling here due to the small dataset, but repeated cross-validation should work just as well as bootstrap in smaller samples and should do the job for us just fine. You can increase the `"number"` argument to increase the number of folds in the dataset and you can increase the `"repeat"` argument to increase the number of times the entire cross validation gets repeated, both at the expense of computational power.
+We will choose to standardize our variables using the `scale()` function, which you may recognize. The `scale()` function will center (subtract mean from the value for a mean of 0) and scale (divide value by its standard deviation for an SD of 1) our continuous predictors. We don't include categorical variables. We'll also go ahead and get started by creating our first random forest model. Let's try using the `caret` package, a relatively general machine learning package.
+
+(Another function that can be used to standardize is the `preProcess()` function in the `caret` package, and it may be better or easier to use for your purposes. I just like `scale()`.)
 
 ## First Model Setup
 
@@ -170,13 +166,15 @@ A side note: There are several different validation methods you can use in caret
 
 ```{r}
 #| label: First model setup
-library(caret)
-set.seed(39) # I'm going to put this before every random generation just for
-# clarity. Before data partition, please.
+library(caret) #n eeded first for the inTrain function below.
+set.seed(39) 
+# I'm going to set the random seed BEFORE every 
+# random generation, including model fitting, for clarity. 
 inTrain <- createDataPartition(amatusclean$sum_arith_perf,
   p = 0.7, list = FALSE
 )
-# 0.7 selected to have a decent number of N in the test set
+# 0.7 will sort 70% of the records into training set, 30% into the test
+# set. I selected 0.7 to have a decent number of N in the test set.
 
 # create training vs test data.
 training <- amatusclean[inTrain, ]
@@ -184,24 +182,8 @@ test <- amatusclean[-inTrain, ]
 View(training)
 View(test)
 
-
-##### There are two methods to include scaling of predictor variables: manual
-# scaling of predictors (and predictions later on), and preprocessing, which
-# means using an R function to "process" your data to put it in the model.
-# I will show an example with preProcess from the caret package, however
-# the `recipes` package may be even more powerful for preprocessing and less
-# inconvenient, since preProcess is usually used for scaling all variables
-# in a dataset at once (and therefore is harder to use with subsequent models,
-# since you need to tune the application of your preprocessing.)
-#####
-# I'm going to pull out the dependent variable.
-trainnodv <- training
-preProc <- preProcess(training, method = c("center", "scale"))
-trainscaled <- predict(preProc, training)
-# Again, we will not be using this, but training data would be standardized in
-# trainscaled.
-
-# Let's try doing it in a more general way.
+# Create the scaled training set.
+# Start by isolating the variables we are studying.
 numeric_predictors <- c(
   "score_BFI_N", "score_AMAS_total", "age", "score_GAD",
   "score_PISA_ME", "score_STAI_state_short",
@@ -210,61 +192,60 @@ numeric_predictors <- c(
 categorical_variable <- "sex"
 response_variable <- "sum_arith_perf"
 
-# Create a new dataframe by scaling and centering numeric predictors.
-
+# Create a new dataframe by scaling and centering
+# numeric predictors.
 scaled_training <- training %>%
-  mutate(across(all_of(numeric_predictors), ~ scale(.) %>% as.vector())) %>%
-  # Scale and convert back to vector just in case
-  select(all_of(numeric_predictors), all_of(categorical_variable), all_of(response_variable)) # Select only the relevant columns
+  mutate(across(all_of(numeric_predictors), ~ scale(.) %>% as.vector())) %>%   
+  # Scale and convert to vector, so that the
+  # output is not in matrix form.
+  select(all_of(numeric_predictors), all_of(categorical_variable), all_of(response_variable)) 
+# Select and retain only the relevant columns.
 
-# View the scaled data
 View(scaled_training)
-
-
 ```
 
 ***Hyperparameters and creating the Random Forest Model***
 
+A side note: There are several different validation methods you can use in `caret`, including bootstrapping, cross-validation, and repeated cross-validation. Repeated cross-validation should pretty much always be used when computationally appropriate. Bootstrapping may be compelling here due to the small dataset, but repeated cross-validation should work just as well as bootstrap in smaller samples and should do the job for us. In the `trainControl()` function you'll see below, you can increase the `number` argument to increase the number of folds in the dataset and you can increase the `repeat` argument to increase the number of times the entire cross validation gets repeated, at the expense of computational power.
+
 ```{r}
 
-# The argument `mtry` is a parameter of the number of randomly selected predictors to
-# consider splitting at each node of the decision tree. 
+# The argument `mtry` is a hyperparameter of the number of randomly
+# selected predictors to consider splitting at each node of the decision
+# tree.
 # More on this after the code.
 control <- trainControl(
   method = "repeatedcv", number = 10, repeats = 3,
   search = "random"
-) 
-# picks random `mtry` values in the range 1 to # of predictors. 
-# Can pick the same value twice, so not ideal for me.
-
+)
+# `random` as the value for the`search` argument will test
+# `mtry` values in the range of [1, # of predictors].
+# Can try the same value twice, so not ideal for us.
 control <- trainControl(
   method = "repeatedcv", number = 10, repeats = 3,
   search = "grid"
 )
-# this one picks preselected values for `mtry`, which you would define
-# on your own. We will be using this
-tunegrid <- expand.grid(.mtry = c(2:8)) 
-# This function creates a data frame from all
-# combinations of the supplied vectors/factors. In other words, this
-#creates the grid of values for the hyperparameter `mtry`. 
-# This one says try every value including 
-# and between 2 and 8. You can't try more `mtry` values than there are predictors.
-# We're going to stick with this for the most part throughout.
 
+# `grid` as the value of the `search` argument will pick preselected values # for `mtry`, which you would define on your own. Here's an example below:
+tunegrid <- expand.grid(.mtry = c(1:10))
+# This function creates a data frame from all combinations of the
+# supplied vectors/factors. This is the grid of values for the
+# hyperparameter `mtry`.
 
-# let's start with all values of `mtry` (1 to number of predictors, which is 10) for the very first model.
-tunegrid <- expand.grid(.mtry = c(1:10)) 
+# Thus, this would test values of mtry including and between 1 and 10.
+# You can't try more `mtry` values than there are predictors.
 
+# Let's start with the code above to test all current possible values of `mtry` (1 to number of predictors, which is 10) for the very first model.
 
 ############
-# You can also try to use "default" values. 
-x <- amatusclean[, 1:10]
-mtry <- ncol(x) / 3 
-# in random forest for regression, predictors/3 is
-# often the "default" value of this parameter. 
+# You can also try to use "default" values.
+# In random forest for regression, predictors/3 is
+# often the "default" value of this parameter.
 # In classification, it is the square root of the # of predictors.
-# Just including this here in case you want to try it.
-# But make sure to fix your `tuneGrid` argument too!!!!!
+# Just including some code here in case you want to try it.
+# But make sure to fix your `tuneGrid` argument too!
+x <- amatusclean[, 1:10]
+mtry <- ncol(x) / 3
 
 # As you'll remember, the REAL parameters are below:
 control <- trainControl(
@@ -273,10 +254,8 @@ control <- trainControl(
 )
 tunegrid <- expand.grid(.mtry = c(1:10)) 
 
-#Now, to run the random forest
+# Now, to run the random forest
 set.seed(40)
-# We will be setting the seed at each model.
-# You can also just run this once and all random items, as long as they are generated in the same order, will be replicable.
 rf_scaled <- train(
   sum_arith_perf ~ scale(score_AMAS_total) + sex + scale(age) + 
     scale(score_BFI_N) + scale(score_GAD) + scale(score_PISA_ME) +
@@ -285,39 +264,35 @@ rf_scaled <- train(
   data = training,
   importance = TRUE, method = "rf", tuneGrid=tunegrid, trControl = control
 )
-# Notice that we are using data = training, NOT the scaled
-# training set, as well as the `scale()` function.
+# Notice that in this example, we are using data = training, NOT the
+# scaled training set, as well as the `scale()` function again.
 # Also, no `tuneLength` argument. Just `trControl`.
 
 print(rf_scaled)
 varImpPlot(rf_scaled$finalModel, type = 1)
 ```
 
-As you can see in the first model (`rf_scaled`), If it was up to caret, the best predictive method would have us randomly sample 1 predictor to consider splitting at each node of the decision tree. That means we probably have very few predictors that actually provide value in predicting math performance. This is expected in this dataset and in much psychological research, as we stated early on. Although an `mtry=1` is too random, we clearly need to use a low mtry. The difference between the default (# of predictors/3) number for `mtry` and `mtry=2` isn't too big, so we can stick with either for now. We'll try to set 2 as the minimum and make sure our code test a range of mtries, just in case another value ends up being better than 2 (which I don't expect to be the case).
+As you can see in the first model (`rf_scaled`), if it was up to caret, the best predictive method would have us randomly sample 1 predictor to consider splitting at each node of the decision tree (e.g., `mtry`=1). That is a very random method, and means we probably have very few predictors that actually provide value in predicting math performance. This is expected in this dataset and in much psychological research, as we stated early on. Although `mtry=1` is too random, we clearly need to use a low value for mtry. The difference between the default (# of predictors/3) number for `mtry` and `mtry=2` isn't too much, so we'll set 2 as the minimum value and make sure our code tests a range of mtries, just in case another value ends up being better than 2 (which I don't expect to be the case).
 
 ***Refining the First Model***
 
-Let's exclude 1 and go again and try more options.
+Let's exclude 1 from the range of mtry values and go again.
 
 ```{r}
-#| label: Excluding value of 1
+#| label: Excluding mtry value of 1
 
 control <- trainControl(
   method = "repeatedcv", number = 10, repeats = 3,
   search = "grid"
 )
-# the term "grid" means it will picks preselected values for mtry, 
-# which you would define on your own.
-# Remeber to change the control variable back to search = "random" if
-# you aren't using a grid search.
 
 tunegrid <- expand.grid(.mtry = c(2:8)) 
 # This one says try values between and including 2-8.
-# You can't try more mtries than there are predictors. We're going to stick with this throughout. Since our optimal mtry at first was 1, the optimal
-# mtry is probably going to be low (and will likely be 2).
+# Since our optimal mtry at first was 1, the optimal mtry is probably
+# going to be low (and will likely be 2).
 
 
-# I'm going to put this before every random generation just for clarity.
+
 set.seed(40)
 rf_mtry2 <- train(
   sum_arith_perf ~ score_AMAS_total + sex + age + score_BFI_N +
@@ -326,24 +301,26 @@ rf_mtry2 <- train(
   data = scaled_training, importance = TRUE,
   method = "rf", tuneGrid = tunegrid, trControl = control
 )
-# Notice we keep using the importance=TRUE parameter, which calculates variable
-# importance metrics. We need this to be set to TRUE to be able to see
-# varimp plots later.
+# Notice we keep using the importance=TRUE parameter, which calculates 
+# variable importance metrics. We need this to be set to TRUE to be able 
+# to see varimp plots later.
 
 print(rf_mtry2)
 varImpPlot(rf_mtry2$finalModel, type = 1)
 
 ```
 
-R squared of around .14ish is obviously mildly low, but it's actually decent for psychological research. In published papers, you'll often happen to see r-squareds around .15-.25 or so, if that. It's very hard to build an extremely accurate model of human behavior namely because an incalculable number of factors influence our behavior in seen and unseen ways. Not to mention we care more about feature selection for than perfect prediction, which is why we are scaling variables in the first place. If we just wanted the best predictive model,
+2 was the best mtry value for this 10-variable model, as expected. R squared of around .14ish is obviously a bit low, but it's actually decent for psychological research. In published papers, you'll often see r-squareds anywhere from .10 to .25 or so. It's very hard to build an extremely accurate model of human behavior.
 
-The `VarImpplot()` function assesses the variable importance for each of the variables in our model, measured by the increase in Mean square error should the variable be removed from the model. As you can see, the lowest variable is extremely irrelevant to the model, that variable being neuroticism. Neuroticism seems to be a bad predictor of arithmetic performance, but be careful --- however unlikely, it may instead be the case that all the variance neuroticism explains is better explained by other variables in the model (if correlation is high). It may also improve performance through stronger correlation with the IVs than the DV. However, it's probably a bad variable.
+The `VarImpplot()` function assesses the variable importance for each of the variables in our model, measured by the increase in mean square error when the variable's values are permuted (shuffled). A negative value for variable importance means that the error was higher when using the original predictor variable values than when using the permuted ones (not a good predictor).
 
-When you run a model, variables with a negative value for variable importance mean that the error was higher when using the original predictor variable values than when using the permuted ones. Obviously, this tends to mean the variable doesn't have a role in prediction. So, you can help identify unimportant variables in (usually low-dimension) models with variable importance. However, keep in mind that occasionally, low importance variables can become "important" in models with fewer dimensions (particularly if they correlate strongly with other independent variables or happen to explain the noise well). This can be an issue if it is overfitting random noise in the training data, but it may still generalize well to test data.
+As you can see, the lowest variable, neuroticism, is extremely irrelevant to the model. Neuroticism seems to be a bad predictor of arithmetic performance, but be careful --- however unlikely, it may be the case that the variance neuroticism explains is better explained by other variables in the model (if correlation is high), so neuroticism may actually show decent prediction in a simpler model with 1-2 variables, including neuroticism, and the DV. In this model, it may even improve model performance through stronger correlation with the IVs than the DV (called a "suppressor" variable, for which you'd need to check semipartial correlations). However, it's likely just a bad predictor.
 
-It also looks like the models we run think that math self-concept, sex, math self-efficacy and possibly math anxiety are the most important variables. Just looking at the graphs, there does indeed seem to be around 2-5 variables here that actually predict a significant amount of variance in our DV, so that's probably a great number for a parsimonious model.
+It looks like the models we've run so far think that math self-concept, sex, math self-efficacy and possibly math anxiety are some of the most important variables. Looking at the graphs, we might guess that there's around 2-5 variables here that predict a significant amount of variance in our DV, so that's probably a good number for a parsimonious model.
 
-Now, to fit our goal of parsimony, we want to cut out the variables that don't help us very much because we run the risk of creating a very nonparsimonious model, and of overfitting of course. From the model above, it seems that there's only one, maybe two predictors that are extremely irrelevant to the model. This is probably in part because the effect sizes of most variables are so weak that removing any one variable can significantly reduce the predictive power of the model. In other words, the best predictive model might be a 9 or 10 variable model, but the best parsimonious model (which contains only the most relevant predictors at the cost of retaining all variables with even minor predictive power) may be somewhere in the 2-5 variable range.
+Now, to fit our goal of parsimony, we want to cut out the variables that don't predict the DV very well. Though random forest can handle excessive weak predictors (especially if they do provide a bit of information), we run the risk of adding too much noise and diluting the true signal.
+
+Looking at the variable importance metrics, it seems that there's only one, maybe two predictors that are extremely irrelevant to this specific model. This is probably in part because the effect sizes of most variables are so weak that removing any one variable can significantly reduce predictive power. In other words, the best pure predictive model MAY be a 9-10 variable model, but the best parsimonious model (containing only the most relevant predictors at the cost of not including variables that may provide very minor predictive power) may be somewhere in the 2-5 variable range.
 
 We'll start with a 9 variable model, which we'll create FIRST by cutting `BFI_N`.
 
@@ -368,11 +345,11 @@ varImpPlot(rf_firstselection$finalModel, type = 1)
 # type 1 refers to estimates following perturbation.
 ```
 
-We're seeing a similar pattern. Math self-efficacy and sex seem to be two of the most powerful variables in every model, while math self-concept and some math anxiety variables trail not too far behind (the rest seem to hang in the balance). It seems like of the ten we chose, those are some of the most important variables needed to predict math performance in German students. `RMSE` and R squared improved! But these numbers fluctuate anyways given the nature of random forest models. We'll take a look at how these models predict the test set later.
+We're seeing a similar pattern. Math self-efficacy and sex seem to be two of the most powerful predictors of math performance in German students in every model, while math self-concept and some math anxiety variables trail not too far behind (the rest seem to hang in the balance). `RMSE` and R squared improved too! But that doesn't always mean the model is strictly better. We'll take a look at how these models predict the test set later.
 
-Since `AMAS` measures math anxiety, which conceptually seems to map on to math performance better than general anxiety, it makes sense that state anxiety and general anxiety are also relatively unimportant predictors. General anxiety doesn't seem to add much value to predicting math performance when math anxiety is already accounted for, and state anxiety isn't much better. Test anxiety (from earlier) being a weak predictor is not as intuitive, but it's possible that the most salient aspect here is that the test is on math, not that there's a test itself, so anxiety of tests in general doesn't really have predictive power of performance the same way math anxiety does. Regardless, they likely cover a lot of each other's correlation.
+Since `AMAS` measures math anxiety, which might map on to math performance better than general anxiety (I haven't read the literature so take that with a grain of salt), it makes sense that state anxiety and general anxiety are also relatively unimportant predictors. General anxiety doesn't seem to add much value to predicting math performance when math anxiety is accounted for, and state anxiety isn't much better. Test anxiety (from earlier) being a weak predictor is not as intuitive, but it's possible that the most salient aspect here is that the test is on math, not that there's a test itself, so anxiety of tests in general doesn't really have predictive power of performance the same way math anxiety does. Regardless, each also likely covers a lot of the other's correlation.
 
-Now, we're going to try to run more random forest models with a reduced set of predictors since we are at least starting to identify the most important predictors. Let's see if we can find a more parsimonious model with still good predictive power. Language self-efficacy goes next.
+Now, we're going to try to run more random forest models with a reduced set of predictors since we are starting to identify the most important predictors. Let's see if we can find a more parsimonious model with still good predictive power. Language self-efficacy goes next.
 
 ***Second Selection Model***
 
@@ -397,9 +374,9 @@ varImpPlot(rf_secondselection$finalModel, type = 1)
 # type 1 refers to estimates following perturbation.
 ```
 
-Slight reduction in `RMSE` and increase in (training data) R-squared! Importantly, the variable importance metrics are starting to look SLIGHTLY better --- the lowest `incMSE%` is around 3%. great news for our goal of parsimonious modeling. However, I'm not sure if this will continue. It's okay if while going through variable selection, your model doesn't necessarily have a massive reduction in `RMSE` or massive increase in r squared. Remember that we're looking to explain the most variance with as few variables as needed, so sometimes parsimony is worth slight decreases in predictive accuracy (though you should make sure you're not cutting a seemingly low-predictive power variable that has explanatory importance).
+Slight reduction in `RMSE` and increase in (training data) R-squared! Importantly, the variable importance metrics are starting to look SLIGHTLY better --- the lowest `incMSE%` is around 3%. Good news for our goal of parsimonious modeling. However, I'm not sure if this will continue. Remember that we're looking to explain the most variance with as few variables as needed, so sometimes parsimony is worth slight decreases in predictive accuracy (though you should make sure you're not cutting a seemingly low-predictive power variable that has explanatory importance).
 
-This may be a decent model. The fact that the `$incMSE` is starting to approach reasonable numbers means we're starting to run out of questionable predictors. This model is likely better than the full model, but also likely not the best model of sheer prediction. We may not need all those measures of anxiety, and like we said earlier, we likely are looking for a 2-5 variable model to cover almost all of the variance with the fewest variables possible. So we should keep going before we start prediction.
+This may be a decent model. The fact that the `$incMSE` is starting to approach reasonable numbers means we're starting to run out of questionable predictors. However, all those measures of anxiety may not significantly improve the model fit or predictive accuracy, and like we said earlier, we likely are looking for a 2-5 variable model to cover as much variance with the fewest variables possible. So, we should keep going.
 
 Let's cut the next least important variable - `score_GAD`.
 
@@ -420,14 +397,17 @@ print(rf_thirdselection)
 # we'll look at variable importance again later.
 ```
 
-Slight reduction in R squared seems odd, but it's definitely possible that the model got worse after removing GAD. It's also possible that this model fits the train data well but will not generalize well to the test data. We'll see.
+Slight reduction in R squared seems odd, but it's definitely possible that the model got worse after removing GAD. Or, the accuracy increase from retaining GAD may not be large enough to justify recording GAD. We'll see.
 
 ```{r}
 varImpPlot(rf_thirdselection$finalModel, type = 1)
 # type 1 refers to estimates following perturbation.
 ```
 
-The `RMSE` did go up. This doesn't seem better than the previous models at the moment. Let's keep going. By the way, at this point the highest mtry being tried (7) is greater than number of predictors (6). It still works without it but it produces a lot of annoying warnings, so we'll start to include a cap line at the beginning of the chunk of code for your convenience (before the set seed, importantly). We're cutting test anxiety next.
+The `RMSE` did go up this time. This model doesn't seem better than the previous models at the moment. Around this step or the next step is where I would begin to suspect that predictive accuracy is declining fast. Remember that we are currently more interested in, for example, identifying a 5-variable model that explains 15% of the variance over a 7- or 8- variable model that explains say, 17% of the variance, so let's keep going in our pseudo-variable selection procedure. 
+
+By the way, at this point the highest value of `mtry` being tried (7) is greater than number of predictors (6).  We'll start to include a cap line at the beginning of the chunk of code for your convenience (before the set seed, importantly). The code still works without it but it produces a lot of annoying warnings.
+We're cutting test anxiety next.
 
 ***Fourth Selection Model***
 
@@ -450,9 +430,11 @@ varImpPlot(rf_fourthselection$finalModel, type = 1)
 # type 1 refers to estimates following perturbation.
 ```
 
-Hmm, looks like the anxiety variables aren't really helping us all that much. However, it is a bit odd that these anxiety variables tend to flip flop with their importance in these graphs. I've also noticed that age, which was once near the bottom of the "importance" graph, continues to move upwards. At this point, I start to wonder if the math anxiety variables may add predictive power, despite seemingly being not the variables with the best zero-order correlations with the DV. Not to mention that the `%IncMSE` is relatively high, even enough that this sort of model starts to look pretty appealing. However, let's keep going, as this doesn't seem to be a great model either.
+Hmm, looks like the anxiety variables aren't really helping us all that much. It is a bit odd that these anxiety variables tend to flip flop with their importance in the importance graphs. That makes me wonder if there is redundancy in including all of them, even though it appears that at least some of them do add predictive power. The `%IncMSE` for our anxiety variables is relatively high, enough that this sort of model starts to look pretty appealing. However, I am still curious if the most parsimonious model may either have only one anxiety variable (likely math anxiety) or no anxiety variables. 
 
-I suspect the MOST parsimonious model may either have only one anxiety variable (likely math anxiety) or no anxiety variables. Let's cut state anxiety, then.
+You may have also noticed that `age`, which was once near the bottom of the "importance" graph, continues to move upwards. 
+
+Let's cut state anxiety, then.
 
 ***Fifth Selection Model***
 
@@ -475,7 +457,9 @@ varImpPlot(rf_fifthselection$finalModel, type = 1)
 # type 1 refers to estimates following perturbation.
 ```
 
-The models continue to worsen. It seems like some of these variables that we've removed for seeming middling may contribute to predictive accuracy, but we will check this with test data. However, it does seem that we have identified the key variables as being math self-efficacy and self-concept as well as sex, possibly with math (or state) anxiety and age. Also, age used to be one of the predictors with the lowest `incMSE%` in the full model, but has stuck in the models we are testing. That indicates to me that age may have value in some models, but it seems to generally have little relationship with the dependent variable. It likely should only be used in the model if it happens to be in the best predictive model or if you are convinced of its key relationship with another variable. If this were an actual research project, I would have conducted more exploratory data analysis to check 'age''s correlation with other variables as well as evaluated the part correlation in the full model to see if variables such as age were acting as suppressors of key variables.
+The models continue to worsen. It seems like some of the relatively weak variables that we've removed may actually improve predictive accuracy, but we will check this with test data. However, it does seem that we have identified the key variables as being math self-efficacy and self-concept as well as sex, possibly with math (or state) anxiety and age. 
+
+Also, `age` used to be one of the predictors with the lowest `incMSE%` in the full model, but has stuck in the models we are testing. That indicates to me that age may have value in some models, though it seems to generally have little relationship with the dependent variable. I wonder if age is either being overrated by our backwards selection, or if age really does contribute important information in our lower-dimensional models. `Age` likely should only be used in the model if it seems to remain in the best predictive model or if you are convinced of a key interaction with another variable. If this were an actual research project, I would have conducted more exploratory data analysis to check `age`s correlation with other variables as well as evaluated the part correlation in the full model to see if variables such as age were acting as suppressors of key variables.
 
 ***Sixth Selection Model***
 
@@ -499,14 +483,10 @@ varImpPlot(rf_sixthselection$finalModel, type = 1)
 # type 1 refers to estimates following perturbation.
 ```
 
-The `RMSE` went up again, and by a decent amount. At this point, it seems safe to say that models are not getting any better --- in fact, they're getting worse. The four variables above do seem to be the most "important" variables in terms of identifying predictors that genuinely correlate with the dependent variable, and math self-efficacy and sex are likely the top two. Of course, this has nothing to do with accuracy of prediction. The 4 or 5 variable models seem to be pretty good parsimonious models if we want to collect more than only 2 variables.
+The `RMSE` went up again, and by a decent amount. At this point, it is safe to say that the models are not fitting any better. The four variables above do seem to be the most "important" variables in terms of identifying predictors that genuinely correlate with the dependent variable, and math self-efficacy and sex are likely the top two. Of course, this ignores sheer accuracy of prediction. The 4 or 5 variable models (the 5th variable being age) seem to be pretty good parsimonious models if we want to collect more than only 2 variables.
 
-In other words, we've identified 5 variables that can produce a good model that captures a good amount of the variability in scores. This model may be the best combination of parsimony and predictive power (in fact, it seems like it may be flat out the best predictive model), but this model is likely not the most parsimonious (that seems to be a model with only a couple predictors, as we've indicated before). There is also a chance it is not the most predictive (which we'll test in the Random Forest Test Predictions addendum).
+In other words, we've identified 5 variables that can produce a good model that captures a good amount of the variability in scores. This model may be the best combination of parsimony and predictive power (it may even be flat out the best predictive model), but this model is likely not the most parsimonious (that seems to be a model with only a couple predictors, as we've indicated before). There is also a chance it is not the most predictive (which we'll test in the Random Forest Test Predictions addendum).
 
-In my addendum to this blog about automated feature selection methods, we 
-will devise a "parsimonious" two-predictor model. In my second addendum to this
-blog, entitled "Random Forest Test Prediction", we will see that its 
-predictive accuracy rivals that of some bigger models we created above.
+In my second addendum to this blog about automated feature selection methods, we will devise a "parsimonious" two-predictor model. In my fourth addendum to this blog, entitled "Random Forest Test Prediction", we will see that its predictive accuracy rivals that of some bigger models we created above.
 
-Let's look at some automated variable selection procedures in the next addendum, then we'll test all our predictions in a third addendum.
-
+Let's look at some automated variable selection procedures in the next addendum, then we'll test all our predictions in a fourth addendum.
