@@ -9,9 +9,11 @@ editor: visual
 It's time to test the predictive power of each of our random forest models on the test set of data. Although you should keep in mind that the test set is a "random sample" as much as the training set is, the idea of predictive accuracy is to be able to effectively predict new data, so good predictive accuracy on a test set implies underlying robustness of the predictive model since it is likely not overfitting to the training data.
 
 ***Prediction Evaluation***
-First, let's scale the test data as we did in the original random forest document. Our data import and cleaning code is copied over, so read that document for more detailed notes about how we ended up with the 'amatusclean' dataset. 
+
+First, let's scale the test data as we did in the original random forest document. Our data import and cleaning code is copied over, so read that document for more detailed notes about how we ended up with the 'amatusclean' dataset.
 
 Now, run the prediction.
+
 ```{r}
 #| label: Load packages, clean data
 #| warning: false
@@ -270,9 +272,10 @@ R_squared
 
 ```
 
-Like we posited earlier, the full model did indeed turn out to be the best model for prediction. Many of our in-between models with the 4/5 most key variables, despite predicting the train data the best, predicted the test set middlingly at best. Thus, feature selection in this case turned out to be wholly unnecessary for prediction, and was only useful for identifying a parsimonious model (which we will evaluate below) and the "true" predictors from the list of ten, being those that appear to have non-zero correlation with the DV. This phenomenon may happen in psychology data because of the relatively small effect sizes of even some of the best predictors --- this is why train/test splitting (or train, test, validation splitting) is important. If we were only looking to predict arithmetic performance in German students, it would be best to use the full model or use an algorithmic variable selection method to search for pure predictive power. If we were more interested in describing the most parsimonious model of arithmetic performance, the two-variable model would be a good choice. A 4-5 variable model (sex, math self-efficacy, math self-confidence, math anxiety, and possibly the slightly less valuable state anxiety) might also be a good choice to explain a few additional predictors that do indeed seem to be useful in predicting arithmetic performance, but given the poor fit of the model on test data, I would not be convinced. 
+Like we posited earlier, the full model did indeed turn out to be the best model for prediction. Many of our in-between models with the 4/5 most key variables, despite predicting the train data the best, predicted the test set middlingly at best. Thus, feature selection in this case turned out to be wholly unnecessary for prediction, and was only useful for identifying a parsimonious model (which we will evaluate below) and the "true" predictors from the list of ten, being those that appear to have non-zero correlation with the DV. This phenomenon may happen in psychology data because of the relatively small effect sizes of even some of the best predictors --- this is why train/test splitting (or train, test, validation splitting) is important. If we were only looking to predict arithmetic performance in German students, it would be best to use the full model or use an algorithmic variable selection method to search for pure predictive power. If we were more interested in describing the most parsimonious model of arithmetic performance, the two-variable model would be a good choice. A 4-5 variable model (sex, math self-efficacy, math self-confidence, math anxiety, and possibly the slightly less valuable state anxiety) might also be a good choice to explain a few additional predictors that do indeed seem to be useful in predicting arithmetic performance, but given the poor fit of the model on test data, I would not be convinced.
 
 Now, let's look at the prediction of the models constructed using automated methods:
+
 ```{r}
 #| label: Prediction of Automated Methods
 ### 2/3 variable models
@@ -318,216 +321,74 @@ print(validationtwovariablemodel)
 
 Our parsimonious model turned out to be one of the best models for prediction (better than all except our first two models). That's pretty crazy!
 
-The form of backwards selection we used in the original random forest variable selection blog helped us identify the three most important predictors, as well as three additional helpful tentative predictors (math anxiety, state anxiety, age). We can see that the first two were identified by the Boruta algorithm as being predictors that seem to have true non-zero correlation with the DV. We probably would have saved time by just starting off with the Boruta algorithm, which goes to show that backwards selection is an uncertain and inexact process. 
-However, although automated methods are helpful when attempting to maximize predictive accuracy, you can see that they are not infallible, as the RFE returned some odd results when cutting into the original 10-variable model. Running a few different automated selection methods can help you identify the key variables as well as build some potentially high-performing models (but make sure to pick whichever method fits the data the best, not the one that confirms what you hypothesize).
-I want to finish by reminding you that random forests are random, so you will get a new model every time you run the train command if you do not set the seed beforehand. With good predictors, a large data set and intensive repeated cross validation, it won't change much, but it will change. The "stepwise" procedure I followed here was primarily for narrative purposes and may not be the best choice to build the single best model at prediction or another task, but it will help you to evaluate the variable importance at each step and see how the different models predict the data (and which variables they seem emphasize). This can help you work to select the model that best fits your goal of parsimony, variable selection, prediction, all three, or another goal. However, in most cases, you should try to use an algorithmic method or knowledge of the field to select variables, particularly if interested in predictive power.
+The form of backwards selection we used in the original random forest variable selection blog helped us identify the three most important predictors, as well as three additional helpful tentative predictors (math anxiety, state anxiety, age). We can see that the first two were identified by the Boruta algorithm as being predictors that seem to have true non-zero correlation with the DV. We probably would have saved time by just starting off with the Boruta algorithm, which goes to show that backwards selection is an uncertain and inexact process. However, although automated methods are helpful when attempting to maximize predictive accuracy, you can see that they are not infallible, as the RFE returned some odd results when cutting into the original 10-variable model. Running a few different automated selection methods can help you identify the key variables as well as build some potentially high-performing models (but make sure to pick whichever method fits the data the best, not the one that confirms what you hypothesize). I want to finish by reminding you that random forests are random, so you will get a new model every time you run the train command if you do not set the seed beforehand. With good predictors, a large data set and intensive repeated cross validation, it won't change much, but it will change. The "stepwise" procedure I followed here was primarily for narrative purposes and may not be the best choice to build the single best model at prediction or another task, but it will help you to evaluate the variable importance at each step and see how the different models predict the data (and which variables they seem emphasize). This can help you work to select the model that best fits your goal of parsimony, variable selection, prediction, all three, or another goal. However, in most cases, you should try to use an algorithmic method or knowledge of the field to select variables, particularly if interested in predictive power.
 
 To finish: Just for fun and to show you the value of Boruta and other automated methods, I ran dozens of other models using different combinations of the main \~6 predictors, as well as some other variables we identified as unimportant earlier. As you can see, some seem to perform more accurately and with less error on the training set than even some of our earlier models. However, they all perform worse on the test set than our first two models. A 5-variable model with state anxiety and `SDQ_L` displaying pretty great numbers on the train set, as well as a few larger models with test anxiety included also performing well. However, especially given poor performance on the train set, I suspect that the model is happening to overfit certain patterns of noise with `SDQ_L`'s odd distribution, and it would be unlikely to be a good model extrapolated to a larger training dataset (as ours only has around 200 N).
 
 LASSO is up next after this brief detour.
 
-```{r}
-#| warning: false
-#| echo: false
+\`\`\`{r} #\| warning: false #\| echo: false
 
 # including sdq_L and age, but no AMAS.
-set.seed(59)
-rf_lassopretest <- train(
-  sum_arith_perf ~ sex + score_TAI_short +
-    score_STAI_state_short + score_PISA_ME + score_SDQ_M + score_SDQ_L + age,
-  data = scaled_training, method = "rf", importance = TRUE,
-  tuneGrid = tunegrid, trControl = control
-)
-print(rf_lassopretest)
-varImpPlot(rf_lassopretest$finalModel, type = 1)
+
+set.seed(59) rf_lassopretest \<- train( sum_arith_perf \~ sex + score_TAI_short + score_STAI_state_short + score_PISA_ME + score_SDQ_M + score_SDQ_L + age, data = scaled_training, method = "rf", importance = TRUE, tuneGrid = tunegrid, trControl = control ) print(rf_lassopretest) varImpPlot(rf_lassopretest\$finalModel, type = 1)
 
 # Look at that variable importance. Clearly SDQ_L and TAI_short are not important,
+
 # and the model is seeing patterns when they aren't there.
 
-#No SDQ L but still including TAI short.
-set.seed(58)
-rf_lassopretest2 <- train(
-  sum_arith_perf ~ sex + score_TAI_short +
-    score_STAI_state_short + score_PISA_ME + score_SDQ_M + age,
-  data = scaled_training, method = "rf", importance = TRUE,
-  tuneGrid = tunegrid, trControl = control
-)
-print(rf_lassopretest2)
-varImpPlot(rf_lassopretest2$finalModel, type = 1)
+#No SDQ L but still including TAI short. set.seed(58) rf_lassopretest2 \<- train( sum_arith_perf \~ sex + score_TAI_short + score_STAI_state_short + score_PISA_ME + score_SDQ_M + age, data = scaled_training, method = "rf", importance = TRUE, tuneGrid = tunegrid, trControl = control ) print(rf_lassopretest2) varImpPlot(rf_lassopretest2\$finalModel, type = 1)
 
-#Okay yeah, clearly test anxiety isn't the best predictor here.
-#including age, STAI and AMAS but no TAI or sdq_L. 
-set.seed(60)
-rf_lassotest <- train(
-  sum_arith_perf ~ sex +
-    score_STAI_state_short + score_PISA_ME + score_SDQ_M + score_AMAS_total + age,
-  data =
-    scaled_training, method = "rf", importance = TRUE, tuneGrid = tunegrid,
-  trControl = control
-)
-print(rf_lassotest)
-varImpPlot(rf_lassotest$finalModel, type = 1)
+#Okay yeah, clearly test anxiety isn't the best predictor here. #including age, STAI and AMAS but no TAI or sdq_L. set.seed(60) rf_lassotest \<- train( sum_arith_perf \~ sex + score_STAI_state_short + score_PISA_ME + score_SDQ_M + score_AMAS_total + age, data = scaled_training, method = "rf", importance = TRUE, tuneGrid = tunegrid, trControl = control ) print(rf_lassotest) varImpPlot(rf_lassotest\$finalModel, type = 1)
 
-#just math and State anxiety now..
-set.seed(61)
-rf_lassotest2 <- train(
-  sum_arith_perf ~ sex + score_AMAS_total +
-    score_STAI_state_short + score_PISA_ME + score_SDQ_M,
-  data = scaled_training,
-  method = "rf", importance = TRUE, tuneGrid = tunegrid, trControl = control
-)
-print(rf_lassotest2)
-varImpPlot(rf_lassotest2$finalModel, type = 1)
+#just math and State anxiety now.. set.seed(61) rf_lassotest2 \<- train( sum_arith_perf \~ sex + score_AMAS_total + score_STAI_state_short + score_PISA_ME + score_SDQ_M, data = scaled_training, method = "rf", importance = TRUE, tuneGrid = tunegrid, trControl = control ) print(rf_lassotest2) varImpPlot(rf_lassotest2\$finalModel, type = 1)
 
-#just state and SDQ_L.
-set.seed(62)
-rf_lassotest3 <- train(
-  sum_arith_perf ~ sex + score_STAI_state_short +
-    score_PISA_ME + score_SDQ_M + score_SDQ_L,
-  data = scaled_training,
-  method = "rf", importance = TRUE, tuneGrid = tunegrid, trControl = control
-)
-print(rf_lassotest3)
-varImpPlot(rf_lassotest3$finalModel, type = 1)
+#just state and SDQ_L. set.seed(62) rf_lassotest3 \<- train( sum_arith_perf \~ sex + score_STAI_state_short + score_PISA_ME + score_SDQ_M + score_SDQ_L, data = scaled_training, method = "rf", importance = TRUE, tuneGrid = tunegrid, trControl = control ) print(rf_lassotest3) varImpPlot(rf_lassotest3\$finalModel, type = 1)
 
 # Look at that variable importance. Clearly SDQ_L and STAI_short are overfitting badly in this model. STAI_short less so - I wonder
-# if STAI_short is actually above the threshold for 
+
+# if STAI_short is actually above the threshold for
+
 # "important variables, like Boruta told us earlier.
 
 # Just with state anxiety added.
-set.seed(63)
-rf_lassotest4 <- train(
-  sum_arith_perf ~ sex + score_STAI_state_short +
-    score_PISA_ME + score_SDQ_M,
-  data = scaled_training, method = "rf",
-  importance = TRUE, tuneGrid = tunegrid, trControl = control
-)
-print(rf_lassotest4)
-varImpPlot(rf_lassotest4$finalModel, type = 1)
+
+set.seed(63) rf_lassotest4 \<- train( sum_arith_perf \~ sex + score_STAI_state_short + score_PISA_ME + score_SDQ_M, data = scaled_training, method = "rf", importance = TRUE, tuneGrid = tunegrid, trControl = control ) print(rf_lassotest4) varImpPlot(rf_lassotest4\$finalModel, type = 1)
 
 # Just with math anxiety added.
-set.seed(64)
-rf_lassotest5 <- train(
-  sum_arith_perf ~ sex  +
-    score_AMAS_total + score_PISA_ME + score_SDQ_M,
-  data =
-    scaled_training, method = "rf", importance = TRUE, tuneGrid = tunegrid,
-  trControl = control
-)
-print(rf_lassotest5)
-varImpPlot(rf_lassotest5$finalModel, type = 1)
+
+set.seed(64) rf_lassotest5 \<- train( sum_arith_perf \~ sex + score_AMAS_total + score_PISA_ME + score_SDQ_M, data = scaled_training, method = "rf", importance = TRUE, tuneGrid = tunegrid, trControl = control ) print(rf_lassotest5) varImpPlot(rf_lassotest5\$finalModel, type = 1)
 
 # Both math and state anxiety
-set.seed(65)
-rf_lassotest6 <- train(
-  sum_arith_perf ~ sex  +
-    score_AMAS_total + score_PISA_ME + score_SDQ_M + score_STAI_state_short,
-  data =
-    scaled_training, method = "rf", importance = TRUE, tuneGrid = tunegrid,
-  trControl = control
-)
-print(rf_lassotest6)
-varImpPlot(rf_lassotest6$finalModel, type = 1)
+
+set.seed(65) rf_lassotest6 \<- train( sum_arith_perf \~ sex + score_AMAS_total + score_PISA_ME + score_SDQ_M + score_STAI_state_short, data = scaled_training, method = "rf", importance = TRUE, tuneGrid = tunegrid, trControl = control ) print(rf_lassotest6) varImpPlot(rf_lassotest6\$finalModel, type = 1)
 
 # age and math anxiety added.
-set.seed(66)
-rf_lassotest7 <- train(
-  sum_arith_perf ~ sex  +
-    score_AMAS_total + score_PISA_ME + score_SDQ_M + age,
-  data =
-    scaled_training, method = "rf", importance = TRUE, tuneGrid = tunegrid,
-  trControl = control
-)
-print(rf_lassotest7)
-varImpPlot(rf_lassotest7$finalModel, type = 1)
 
-######
+set.seed(66) rf_lassotest7 \<- train( sum_arith_perf \~ sex + score_AMAS_total + score_PISA_ME + score_SDQ_M + age, data = scaled_training, method = "rf", importance = TRUE, tuneGrid = tunegrid, trControl = control ) print(rf_lassotest7) varImpPlot(rf_lassotest7\$finalModel, type = 1)
+
+###### 
+
 #### predictions
-predictmetrics <- function(x, dataset) {
-  predictionslassotest <- predict(x, dataset)
-  validationlassotest <- data.frame(
-    R2 = R2(predictionslassotest, dataset$ sum_arith_perf),
-    RMSE = RMSE(predictionslassotest, dataset$ sum_arith_perf),
-    MAE = MAE(predictionslassotest, dataset$ sum_arith_perf)
-  )
-  print(validationlassotest)
-}
+
+predictmetrics \<- function(x, dataset) { predictionslassotest \<- predict(x, dataset) validationlassotest \<- data.frame( R2 = R2(predictionslassotest, dataset\$ sum_arith_perf), RMSE = RMSE(predictionslassotest, dataset\$ sum_arith_perf), MAE = MAE(predictionslassotest, dataset\$ sum_arith_perf) ) print(validationlassotest) }
 
 predictmetrics(rf_lassotest, test)
 
+predictionslassotest \<- predict(rf_lassotest, test) validationlassotest \<- data.frame( R2 = R2(predictionslassotest, test\$ sum_arith_perf), RMSE = RMSE(predictionslassotest, test\$ sum_arith_perf), MAE = MAE(predictionslassotest, test\$ sum_arith_perf) ) print(validationlassotest)
 
-predictionslassotest <- predict(rf_lassotest, test)
-validationlassotest <- data.frame(
-  R2 = R2(predictionslassotest, test$ sum_arith_perf),
-  RMSE = RMSE(predictionslassotest, test$ sum_arith_perf),
-  MAE = MAE(predictionslassotest, test$ sum_arith_perf)
-)
-print(validationlassotest)
+predictionslassotest2 \<- predict(rf_lassotest2, test) validationlassotest2 \<- data.frame( R2 = R2(predictionslassotest2, test\$ sum_arith_perf), RMSE = RMSE(predictionslassotest2, test\$ sum_arith_perf), MAE = MAE(predictionslassotest2, test\$ sum_arith_perf) ) print(validationlassotest2)
 
+predictionslassotest3 \<- predict(rf_lassotest3, test) validationlassotest3 \<- data.frame( R2 = R2(predictionslassotest3, test\$ sum_arith_perf), RMSE = RMSE(predictionslassotest3, test\$ sum_arith_perf), MAE = MAE(predictionslassotest3, test\$ sum_arith_perf) ) print(validationlassotest3)
 
-predictionslassotest2 <- predict(rf_lassotest2, test)
-validationlassotest2 <- data.frame(
-  R2 = R2(predictionslassotest2, test$ sum_arith_perf),
-  RMSE = RMSE(predictionslassotest2, test$ sum_arith_perf),
-  MAE = MAE(predictionslassotest2, test$ sum_arith_perf)
-)
-print(validationlassotest2)
+predictionslassotest4 \<- predict(rf_lassotest4, test) validationlassotest4 \<- data.frame( R2 = R2(predictionslassotest4, test\$ sum_arith_perf), RMSE = RMSE(predictionslassotest4, test\$ sum_arith_perf), MAE = MAE(predictionslassotest4, test\$ sum_arith_perf) ) print(validationlassotest4)
 
-predictionslassotest3 <- predict(rf_lassotest3, test)
-validationlassotest3 <- data.frame(
-  R2 = R2(predictionslassotest3, test$ sum_arith_perf),
-  RMSE = RMSE(predictionslassotest3, test$ sum_arith_perf),
-  MAE = MAE(predictionslassotest3, test$ sum_arith_perf)
-)
-print(validationlassotest3)
+predictionslassopretest \<- predict(rf_lassopretest, test) validationlassopretest \<- data.frame( R2 = R2(predictionslassopretest, test\$ sum_arith_perf), RMSE = RMSE(predictionslassopretest, test\$ sum_arith_perf), MAE = MAE(predictionslassopretest, test\$ sum_arith_perf) ) print(validationlassopretest)
 
-predictionslassotest4 <- predict(rf_lassotest4, test)
-validationlassotest4 <- data.frame(
-  R2 = R2(predictionslassotest4, test$ sum_arith_perf),
-  RMSE = RMSE(predictionslassotest4, test$ sum_arith_perf),
-  MAE = MAE(predictionslassotest4, test$ sum_arith_perf)
-)
-print(validationlassotest4)
+predictionslassopretest2 \<- predict(rf_lassopretest2, test) validationlassopretest2 \<- data.frame( R2 = R2(predictionslassopretest2, test\$ sum_arith_perf), RMSE = RMSE(predictionslassopretest2, test\$ sum_arith_perf), MAE = MAE(predictionslassopretest2, test\$ sum_arith_perf) ) print(validationlassopretest2)
 
-predictionslassopretest <- predict(rf_lassopretest, test)
-validationlassopretest <- data.frame(
-  R2 = R2(predictionslassopretest, test$ sum_arith_perf),
-  RMSE = RMSE(predictionslassopretest, test$ sum_arith_perf),
-  MAE = MAE(predictionslassopretest, test$ sum_arith_perf)
-)
-print(validationlassopretest)
+#Let's continue to try models predictionslassotest5 \<- predict(rf_lassotest5, test) validationlassotest5 \<- data.frame( R2 = R2(predictionslassotest5, test\$ sum_arith_perf), RMSE = RMSE(predictionslassotest5, test\$ sum_arith_perf), MAE = MAE(predictionslassotest5, test\$ sum_arith_perf) ) print(validationlassotest5)
 
+predictionslassotest6 \<- predict(rf_lassotest6, test) validationlassotest6 \<- data.frame( R2 = R2(predictionslassotest6, test\$ sum_arith_perf), RMSE = RMSE(predictionslassotest6, test\$ sum_arith_perf), MAE = MAE(predictionslassotest6, test\$ sum_arith_perf) ) print(validationlassotest6)
 
-predictionslassopretest2 <- predict(rf_lassopretest2, test)
-validationlassopretest2 <- data.frame(
-  R2 = R2(predictionslassopretest2, test$ sum_arith_perf),
-  RMSE = RMSE(predictionslassopretest2, test$ sum_arith_perf),
-  MAE = MAE(predictionslassopretest2, test$ sum_arith_perf)
-)
-print(validationlassopretest2)
-
-
-#Let's continue to try models
-predictionslassotest5 <- predict(rf_lassotest5, test)
-validationlassotest5 <- data.frame(
-  R2 = R2(predictionslassotest5, test$ sum_arith_perf),
-  RMSE = RMSE(predictionslassotest5, test$ sum_arith_perf),
-  MAE = MAE(predictionslassotest5, test$ sum_arith_perf)
-)
-print(validationlassotest5)
-
-predictionslassotest6 <- predict(rf_lassotest6, test)
-validationlassotest6 <- data.frame(
-  R2 = R2(predictionslassotest6, test$ sum_arith_perf),
-  RMSE = RMSE(predictionslassotest6, test$ sum_arith_perf),
-  MAE = MAE(predictionslassotest6, test$ sum_arith_perf)
-)
-print(validationlassotest6)
-
-predictionslassotest7 <- predict(rf_lassotest7, test)
-validationlassotest7 <- data.frame(
-  R2 = R2(predictionslassotest7, test$ sum_arith_perf),
-  RMSE = RMSE(predictionslassotest7, test$ sum_arith_perf),
-  MAE = MAE(predictionslassotest7, test$ sum_arith_perf)
-)
-print(validationlassotest7)
+predictionslassotest7 \<- predict(rf_lassotest7, test) validationlassotest7 \<- data.frame( R2 = R2(predictionslassotest7, test\$ sum_arith_perf), RMSE = RMSE(predictionslassotest7, test\$ sum_arith_perf), MAE = MAE(predictionslassotest7, test\$ sum_arith_perf) ) print(validationlassotest7)

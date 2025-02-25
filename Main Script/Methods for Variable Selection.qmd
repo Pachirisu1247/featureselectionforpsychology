@@ -1,14 +1,216 @@
 ---
-title: "Automated RF Variable Selection Methods"
+title: "Methods for Variable Selection - Random Forest"
 format: html
 editor: visual
 ---
 
-## Automated Feature Selection Methods: VSURF, Boruta, RFE
+## Manual and Automated Feature Selection Methods: VSURF, Boruta, RFE
+```{r}
+#| label: fig-preds_DV_2
+#| warning: false
+#| fig-cap: "Distribution of predictors against the DV (Page 2)"
+#| fig-width: 12
+#| fig-height: 10
+#| fig-pos: "H"
 
-As an aside, I will provide several examples of explicit automated methods for variable selection in random forest models. VSURF, the first method I will describe, essentially uses backward stepwise selection followed by forward selection based on variable importance (using a basic definition as we used above being, depending on the task, the difference between MSE/misclassification rate after permuting each predictor). There have been several methods for variable selection described in the literature, however, a recent simulation study demonstrated that VSURF often demonstrates some of the best performance for classification tasks (Speiser et al.), which may extend to regression. However, it is worth noting that VSURF is prediction oriented and as such, accepts the risk of producing false negatives.
-***Importing the Data***
-Below, I will reprint the data import and cleaning code from the original blog post regarding variable selection in Random Forest models. We are again using the AMATUS dataset.
+facet_plot_1 <- ggplot(
+  long_data, aes(x = Value, y = .data[[response_variable]])) +  
+    geom_point(alpha = 0.7, color = "lightblue") +  
+    geom_smooth(method = "lm", color = "red", se = FALSE) +  
+    geom_smooth(method = "loess", color = "green", se = FALSE) +  
+    facet_wrap_paginate(~Predictor, ncol = 3, nrow = 3, scales = "free", 
+                      page = 1) +  
+  theme(axis.text = element_text(size = 8))
+
+facet_plot_1
+
+
+
+
+# Create paginated facet plot (Page 2)
+facet_plot_2 <- ggplot(
+  long_data, aes(x = Value, y = .data[[response_variable]])) +  
+    geom_point(alpha = 0.7, color = "lightblue") +  
+    geom_smooth(method = "lm", color = "red", se = FALSE) +  
+    geom_smooth(method = "loess", color = "blue", se = FALSE) +  
+    facet_wrap_paginate(~Predictor, ncol = 3, nrow = 3, scales = "free",
+                        page = 2) +  
+  theme(axis.text = element_text(size = 8))
+
+facet_plot_2
+```
+
+```{r}
+
+# Write a function to generate the plots
+plot_scatter_smooth <- function(data, x_var, y_var) {
+  ggplot(data, aes(x = .data[[x_var]], y = .data[[y_var]])) +  
+    # Using .data[[var]] for tidy evaluation. Actual objects passed in 
+    # the `lapply()` function later on
+    geom_point(fill = "lightblue", alpha = 0.7) + # fill of the plot
+    geom_smooth(method = "lm", color = "red", se = FALSE) +  
+    # for linear trendline
+    geom_smooth(method = "loess", color = "blue", se = FALSE)
+    # for nonlinear trend line
+}
+
+# Generate plots using the predictor variables
+plots <- lapply(numeric_predictors, function(var) plot_scatter_smooth(amatusclean, var, response_variable))
+
+# Display plots
+plots[1:2]
+
+library(ggplot2)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+library(rpart)
+library(rpart.plot)
+library(ggplot2
+        )
+
+
+
+# Extract variable importance scores
+var_imp <- varImp(rf_mtry2)$importance
+
+# Normalize the importance scores (scale to 0-100)
+var_imp$Normalized <- (var_imp$Overall / max(var_imp$Overall)) * 100
+
+# Sort the scores in descending order for curve fitting
+var_imp <- var_imp[order(-var_imp$Normalized), ]
+
+# Add variable rank for plotting
+var_imp$Rank <- seq_along(var_imp$Normalized)
+
+# Calculate the differences between consecutive importance scores
+var_imp$Difference <- c(NA, diff(var_imp$Normalized))
+
+# Find the elbow point using a heuristic (largest drop in importance)
+elbow_index <- which.max(-var_imp$Difference[-1]) + 1  # Exclude first NA and adjust index
+threshold <- var_imp$Normalized[elbow_index]
+
+# Select variables with importance above the threshold
+selected_variables <- rownames(var_imp)[var_imp$Normalized >= threshold]
+
+# Print results
+cat("Elbow Threshold (VI):", threshold, "\n")
+cat("Selected Variables:", paste(selected_variables, collapse = ", "), "\n")
+
+# Fix the issue with assigning the "Selected" column
+var_imp$Selected <- ifelse(var_imp$Rank == elbow_index, "Elbow", "Other")
+
+# Plot the VI curve with ggplot
+vicurve<-ggplot(var_imp, aes(x = Rank, y = Normalized)) +
+  geom_line(color = "blue") +
+  geom_point(aes(color = Selected), size = 3) +
+  scale_color_manual(values = c("Elbow" = "red", "Other" = "black")) +
+  labs(
+    title = "Variable Importance Curve with Elbow Point",
+    x = "Variable Rank",
+    y = "Normalized Variable Importance"
+  ) +
+  geom_text(
+    data = subset(var_imp, Selected == "Elbow"),
+    aes(label = "Elbow"),
+    hjust = -0.2, vjust = -0.5,
+    color = "red"
+  ) +
+  theme_minimal()
+
+vicurve
+
+
+# Replace "sexm" with "sex" in selected_variables
+
+selected_variables<-c("sex","age","score_PISA_ME", "score_SDQ_M", "score_AMAS_total", "score_GAD", "score_STAI_state_short", "score_SDQ_L")
+
+selected_variables <- gsub("sexm", "sex", selected_variables)
+
+# Step 2: Variable selection
+# Create nested models with the selected variables
+
+oob_errors <- numeric(length(selected_variables))
+for (k in seq_along(selected_variables)) {
+  # Select the top k variables
+  selected_vars_k <- selected_variables[1:k]
+  
+  # Fit a Random Forest model with the selected variables using caret
+  formula <- as.formula(paste("sum_arith_perf ~", paste(selected_vars_k, collapse = " + ")))
+  
+  # Subset the dataset for the selected variables
+  subset_data <- scaled_training[, c("sum_arith_perf", selected_vars_k), drop = FALSE]
+  
+  # Define a valid range for mtry (1 to the number of predictors)
+  max_mtry <- length(selected_vars_k)
+  tune_grid <- expand.grid(mtry = seq(1, max_mtry))  # mtry must be between 1 and the number of predictors
+  
+  # Train the model using caret
+  rf_temp <- train(
+    formula,
+    data = subset_data,
+    method = "rf",
+    trControl = control,
+    tuneGrid = tune_grid
+  )
+  
+  # Record the OOB error (use RMSE for regression)
+  oob_errors[k] <- min(rf_temp$results$RMSE)
+}
+
+# Find the optimal number of variables (smallest OOB error)
+optimal_k <- which.min(oob_errors)
+optimal_variables <- selected_variables[1:optimal_k]
+
+# Print results
+cat("Optimal number of variables:", optimal_k, "\n")
+cat("Selected variables:", paste(optimal_variables, collapse = ", "), "\n")
+
+# Plot OOB error for visualization
+plot(oob_errors, type = "b", xlab = "Number of Variables", ylab = "OOB Error (RMSE)",
+     main = "OOB Error vs. Number of Variables")
+```
+```{r}
+# LM models.
+
+linearrfmodel<-lm(sum_arith_perf~., data=training_subset)
+plot(linearrfmodel)
+summary(linearrfmodel)
+
+
+linearrfmodel2<-lm(log(sum_arith_perf)~score_PISA_ME+sex+total_time_minutes+score_SDQ_M, data=na.omit(subset(training_subset, sum_arith_perf > 0)))
+summary(linearrfmodel2)
+plot(linearrfmodel2)
+
+
+```
+
+
+As an addendum to `Introducing Machine Learning Models for Psychologists - Random Forest`, I will walk through a manual example of a variable selection procedure described in the literature for random forest as well as provide several examples of explicit automated methods for variable selection. VSURF, the first method I will describe, essentially uses backward stepwise selection followed by forward selection based on variable importance (using a basic definition as we used above being, depending on the task, the difference between MSE/misclassification rate after permuting each predictor). There have been several methods for variable selection described in the literature, however, a recent simulation study demonstrated that VSURF often demonstrates some of the best performance for classification tasks (Speiser et al.), which may extend to regression. However, it is worth noting that VSURF is prediction oriented and as such, accepts the risk of producing false negatives.
+
+(We will demonstrate an unbiased advanced method of obtaining variable importance measures using conditional inference forests at the end of this document.)
+
+An aside on scaling variables: We will choose to standardize our variables using the `scale()` function, which you may recognize. The `scale()` function will center (subtract mean from the value for a mean of 0) and scale (divide value by its standard deviation for an SD of 1) our continuous predictors. We don't include categorical variables. We'll also go ahead and get started by creating our first random forest model. Let's try using the `caret` package, a relatively general machine learning package.
+
+(Another function that can be used to standardize is the `preProcess()` function in the `caret` package, and it may be better or easier to use for your purposes. I just like `scale()`.)
+
+***Importing the Data*** Below, I will reprint the data import and cleaning code from the original blog post regarding variable selection in Random Forest models. We are again using the AMATUS dataset.
+
 ```{r}
 #| label: Load packages, clean data
 #| warning: false
@@ -79,8 +281,8 @@ scaled_training <- training %>%
   select(all_of(numeric_predictors), all_of(categorical_variable), all_of(response_variable)) 
 
 ```
-***First VSURF Run***
 
+***First VSURF Run***
 
 ```{r}
 #| label: Automated variable selection example
@@ -243,8 +445,7 @@ One more piece of the puzzle --- Boruta does indeed seem to find that age is ten
 
 ## RFE for Prediction
 
-Lastly, I'm going to provide code for a recursive feature selection (RFE) process through the caret package. It starts by fitting a model to all predictors. It then removes the worst predictor from each model, then it refits the model and reevaluates the model fit and the descriptive statistics for each predictor in the model, now sans the removed variable. This process repeats until the model fit is not improved by removing a variable.
-RFE is really just backwards selection, so it is quite simple. However, any kind of stepwise selection procedure (even ) are far from the best choice to do feature selection for most models. Instead, use a better automated method, like the ones detailed above or best subsets regression (where the algorithm runs every single model that could be created from X predictor variables and selects the one with the best model fit), or use your knowledge of the field and to select the variables you think will have an effect on the DV a priori.
+Lastly, I'm going to provide code for a recursive feature selection (RFE) process through the caret package. It starts by fitting a model to all predictors. It then removes the worst predictor from each model, then it refits the model and reevaluates the model fit and the descriptive statistics for each predictor in the model, now sans the removed variable. This process repeats until the model fit is not improved by removing a variable. RFE is really just backwards selection, so it is quite simple. However, any kind of stepwise selection procedure (even ) are far from the best choice to do feature selection for most models. Instead, use a better automated method, like the ones detailed above or best subsets regression (where the algorithm runs every single model that could be created from X predictor variables and selects the one with the best model fit), or use your knowledge of the field and to select the variables you think will have an effect on the DV a priori.
 
 The RFE takes several hours to complete, maybe more if your machine isn't too powerful. Keep that in mind when you're running it.
 
@@ -293,5 +494,4 @@ caret::varImp(rfe_output) # this is importance in final model
 
 Spoilers --- the best predictive performance seems to be with all ten variables, like we sort of anticipated. It seems that due to low effect sizes for most variables and the fact that some variables, like certain anxiety variables or age, may not have a strong correlation with the DV (or even that much importance in random forest models), but they seem to be very useful for prediction, hopefully not by overfitting on the random noise and creating false patterns, but by hopefully acting as suppressors that improve the performance of other variables in the set (which we will again test using test data).
 
-Now, in a second addendum entitled "Random Forest Test Prediction", we will test the predictive accuracy of all models created for the original "Intermediate Models...Random Forest and LASSO" document as well as all models created in this addendum above. We will do so by evaluating the model fit (using r-squared) on the test set of data. 
-
+Now, in a second addendum entitled "Random Forest Test Prediction", we will test the predictive accuracy of all models created for the original "Intermediate Models...Random Forest and LASSO" document as well as all models created in this addendum above. We will do so by evaluating the model fit (using r-squared) on the test set of data.
