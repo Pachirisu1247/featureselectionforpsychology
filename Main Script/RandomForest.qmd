@@ -1,14 +1,19 @@
 ---
 title: "Introducing Machine Learning Models for Psychologists - Random Forest"
-author: Francisco N. Ramos
+author: "Francisco N. Ramos"
+date: today
+bibliography: randomforestrefs.bib
+csl: apa.csl
+nocite: "@*"
 format:
-  pdf:
-    toc: true        
+  html:
     number-sections: true
-    toc-depth: 3    
-    toc-location: left 
-    toc-float: true    
-
+    toc: true        
+    toc-depth: 3   
+    toc-float: true
+    toc-scroll: true
+    css: styles.css
+    
 knitr:
   opts_chunk: 
     collapse: true
@@ -30,11 +35,11 @@ theme_set(theme_minimal())
 
 In this document, I will walk through a simple tutorial for fitting and analyzing a random forest model of typical psychological data.
 
-Although the workings of random forest models are explained in depth elsewhere ([click here for a more detailed but digestible explanation](https://einsteinmed.edu/uploadedfiles/centers/ictr/new/intro-to-random-forest.pdf)), to be brief, random forest models are built from single decision trees, which predict a response variable/dependent variable (DV) based on binary answers to other questions, which are selected in order to create as homologous of groups as possible. For example, a tree might first decide to check "Is the social anxiety score over or under 10.5?", and divide the data based on each record's "answer". Then, it will continuously repeat the process with new questions designed to improve the decisions, like "Is sex male or female?", until it has finalized its prediction and new questions do not improve its output. A random forest model is built from averaging the observations of thousands or more trees, all of which ask different "questions" and may assess different variables (Breiman, 2001).
+Although the workings of random forest models are explained in depth elsewhere ([click here for a more detailed but digestible explanation](https://einsteinmed.edu/uploadedfiles/centers/ictr/new/intro-to-random-forest.pdf)), to be brief, random forest models are built from single decision trees, which predict a response variable/dependent variable (DV) based on binary answers to other questions, which are selected in order to create as homologous of groups as possible. For example, a tree might first decide to check "Is the social anxiety score over or under 10.5?", and divide the data based on each record's "answer". Then, it will continuously repeat the process with new questions designed to improve the decisions, like "Is sex male or female?", until it has finalized its prediction and new questions do not improve its output. A random forest model is built from averaging the observations of thousands or more trees, all of which ask different "questions" and may assess different variables [@breiman_random_2001].
 
 Random forest models usually do well in describing nonlinear/complex relationships between predictor and response variables, are robust (though can technically overfit), and can handle missing and categorical data. However, they are more difficult to interpret than other models like linear regression. Random forests are popular in fields such as biostatistics because they are excellent for problems where the number of predictors *p* exceeds the number of samples/participants *n*. Such problems are not as common in psychology, but random forests still model *n*\>*p* problems well, as should be expected.  
 
-This is the first part of a set of documents walking through building simple random forest models for psychological data, including the addenda `Methods of Variable Selection`, `LASSO (Least absolute shrinkage and selection operator)`, and finally `Predictions`.
+This is the first part of a set of documents walking through building simple random forest models for psychological data, including the forthcoming addenda `Methods of Variable Selection`, `LASSO (Least absolute shrinkage and selection operator)`, and finally `Predictions`.
 
 All references (including the dataset) are at the end of the `LASSO` addendum to this document.
 
@@ -44,19 +49,19 @@ Importantly, I am conducting a **regression** task (predicting a continuous vari
 
 The **first** main objective I'll be attempting to address, and the **only one addressed in this specific document** (the other tasks are addressed in addendum posts, which I link to at the top and bottom of this document as well as throughout), is that I would like to build a suitable predictive model that generalizes well to unseen data of arithmetic performance score in German students from a set of predictor variables including age, sex, self-reported math anxiety, and others. Testing on unseen data is specifically performed in my `Predictions` addendum.
 
-My **second** main objective is to find a "parsimonious" model, which uses a small number of variables to make "good" or "sufficient" prediction. This may be useful insofar as, for example, future researchers do not have to waste resources collecting unimportant variables for no or minimal improvement in prediction. This can be found in my `Methods for Variable Selection` and `LASSO` addenda.
+My **second** main objective is to find a "parsimonious" model, which uses a small number of variables to make "good" or "sufficient" prediction. This may be useful insofar as, for example, future researchers do not have to waste resources collecting unimportant variables for no or minimal improvement in prediction. This can be found in my forthcoming `Methods for Variable Selection` and `LASSO` addenda.
 
-A related **subgoal** is another common objective, that being I would like to have a good sense of which predictor variables appear useful in predicting arithmetic performance and which ones do not. In other words, I would like to identify which variables are important to predicting the response, regardless of their correlation with other predictors. This will also be addressed in my `Methods for Variable Selection` and `LASSO` addenda.
+A related **subgoal** is another common objective, that being I would like to have a good sense of which predictor variables appear useful in predicting arithmetic performance and which ones do not. In other words, I would like to identify which variables are important to predicting the response, regardless of their correlation with other predictors. This will also be addressed in my forthcoming `Methods for Variable Selection` and `LASSO` addenda.
 
 I have not seen the data ahead of time. The analyses described hereafter are entirely novel.
 
 ## The Data
 
-The dataset I will investigate in this document is characteristic of many psychology datasets --- it has a solid but not too large sample size (735 N before being split into test/training sets), a good but not excessive number of potential predictors (20+ collected as part of the survey, many of which are likely unhelpful in prediction), and what is likely middling to low effect sizes for predictors.
+The dataset I will investigate in this document is from Cipora and colleagues [-@cipora_amatus_2024]. It is characteristic of many psychology datasets --- it has a solid but not too large sample size (735 N before being split into test/training sets), a good but not excessive number of potential predictors (20+ collected as part of the survey, many of which are likely unhelpful in prediction), and what is likely middling to low effect sizes for predictors.
 
-For what it's worth, this dataset does not scream "use random forest". The appeal of random forests is often their proficiency in modeling *p*>>>>>*n* situations, particularly because random forest models often do best on sizeable datasets. However, random forest models are able to model many situations, including *n*\>*p*, well and often do so competitively with other models, such as linear regression or other machine learning models. I will find out if this holds for our dataset in my `Prediction` addendum.
+For what it's worth, this dataset does not scream "use random forest". The appeal of random forests is often their proficiency in modeling *p* $\ggg$ *n* situations, particularly because random forest models often do best on sizeable datasets. However, random forest models are able to model many situations, including *n*\>*p*, well and often do so competitively with other models, such as linear regression or other machine learning models. I will find out if this holds for our dataset in my `Prediction` addendum.
 
-For simplicity and didactic purposes, I have pulled twenty variables from the full dataset for my analysis. Some will have a relationship with the DV, others will not. *A priori* variable selection according to expert knowledge of what variables are likely to have predictive relevance would likely be the best variable selection method, though I have retained all suitable variables for this demonstration. Variable selection for this dataset is the focus of my `Methods for Variable Selection` addendum.
+For simplicity and didactic purposes, I have pulled twenty variables from the full dataset for my analysis. Some will have a relationship with the DV, others will not. *A priori* variable selection according to expert knowledge of what variables are likely to have predictive relevance would likely be the best variable selection method, though I have retained all suitable variables for this demonstration. Variable selection for this dataset is the focus of my forthcoming `Methods for Variable Selection` addendum.
 
 Below, I define the single DV as well as the twenty candidate predictor variables followed by the syntax for their object in R.
 
@@ -76,7 +81,7 @@ Below, I define the single DV as well as the twenty candidate predictor variable
 
 5.  General trait anxiety/`score_GAD`, as measured by sum score on the Generalized Anxiety Disorder Screener (GAD-7).
 
-6.  Math self-efficacy/`score_PISA_ME`, as measured in the PISA 2012 study using the sum score of six items.
+6.  Math self-efficacy/`score_PISA_ME`, as measured by using the sum score of six items designed by the OECD for a previous study.
 
 7.  General state anxiety/`score_STAI_state_short`, as assessed by the sum of the five-item scale STAI-SKD.
 
@@ -121,7 +126,7 @@ library(tidyverse)
 library(readr)
 ```
 
-The `here()` function is convenient for creating paths and directories that won't break when files are moved or when you reproduce the work on another computer. More information is available at the following URL: https://here.r-lib.org/
+The `here()` function is convenient for creating paths and directories that won't break when files are moved or when you reproduce the work on another computer [@muller_here_2020]. More information is available at the following URL: https://here.r-lib.org/
 
 Below, I'll use the `here()` function to tell the `readr()` function where to go to get the dataset. The data was stored in my "Main Script" folder, in a subfolder called "OSF archive", and named "AMATUS_dataset.csv". Notice how I use a `normalizePath()` function to convert relative path names to absolute path names, which helps when switching OSes or from cloud to local storage.
 
@@ -312,9 +317,9 @@ This exploratory data analysis is light, but that is only because I want to focu
 
 ## Standardization and Training/Test Sets
 
-Because they simply partition data to make predictions at thresholds, random forest models do not *require* you to standardize your variables. However, it has been shown by Strobl and colleagues (2007) that random forest variable importance measures are biased by the range of values a variable can take, tending to produce higher importance scores for variables with a greater range of possible values, even when both are uninformative.
+Because they simply partition data to make predictions at thresholds, random forest models do not *require* you to standardize your variables. However, it has been shown by Strobl and colleagues [-@strobl_bias_2007] that random forest variable importance measures are biased by the range of values a variable can take, tending to produce higher importance scores for variables with a greater range of possible values, even when both are uninformative.
 
-Permutation importance is unbiased with regard to variable importance regarding the average value, although permutation importance can display variance of variable importance for variables with many categories such that this measure can be unreliable in single trials. Importance measures are still commonly utilized in random forest variable selection with solid results (Speiser et al. 2019) - we will review automated methods as well as alternative variable importance metrics in my `Methods for Variable Selection` addendum. Furthermore, the data contains categorical and ordinal data that I do not want to standardize if I do not need to, as this could bias the underlying variance of the noncontinuous data. 
+Permutation importance is unbiased with regard to variable importance regarding the average value, although permutation importance can display variance of variable importance for variables with many categories such that this measure can be unreliable in single trials. Importance measures are still commonly utilized in random forest variable selection with solid results [@speiser_comparison_2019] - we will review automated methods as well as alternative variable importance metrics in my forthcoming `Methods for Variable Selection` addendum. Furthermore, the data contains categorical and ordinal data that I do not want to standardize if I do not need to, as this could bias the underlying variance of the noncontinuous data. 
 
 I will now create a training set and a test set for model validation. Although validation methods like repeated cross-validation account for the need of a "validation set", I want to have train/test data for the simple purpose of testing built models on "unseen data" to evaluate how well it generalizes to new data. This also comes with concerns (such as the fact that the dataset the data is trained on gets smaller), but this should still help me work out which of the models I construct are truly the best at prediction. (See the `Predictions` addendum for the results).
 
@@ -343,33 +348,33 @@ View(test)
 ### A Note on Feature/Variable Selection
 
 For the purposes of this particular document, I retain all 20 predictor variables to build models and pretend all of them are theorized to have some level of predictive power. However, this is simply for demonstrative purposes and to compare the models I build with all variables later on with better, more parsimonious models. 
-In reality, *this* is the point where you would want to perform variable selection and remove highly correlated/irrelevant predictors from the model to improve performance. I perform this process in the `Methods for Variable Selection` addendum. If you suspect your dataset contains irrelevant/highly correlated features, I recommend switching to the `Methods for Variable Selection` addendum now. If you are merely interested in creating and tuning a random forest model, proceed.
+In reality, *this* is the point where you would want to perform variable selection and remove highly correlated/irrelevant predictors from the model to improve performance. I perform this process in the forthcoming `Methods for Variable Selection` addendum. If you suspect your dataset contains irrelevant/highly correlated features, I recommend waiting for the `Methods for Variable Selection` addendum. If you would simply like to build and tune a random forest model, proceed.
 
 ## Tuning your Hyperparameters for your Random Forest Model
 
-Hyperparameters are simply model parameters that, rather than being calculated by the model, you set prior to building the model. In most cases, random forest works pretty well with the "default values" in software packages (Probst et al. 2019), but tuning can improve performance above and beyond that.
+Hyperparameters are simply model parameters that, rather than being calculated by the model, you set prior to building the model. In most cases, random forest works pretty well with the "default values" in software packages [@probst_hyperparameters_2019], but tuning can improve performance above and beyond that.
 
-Below, I describe four hyperparameters - `mtry`, node size, number of trees and sample size. Most of what I summarize below is explained in greater detail in a paper by Probst and colleagues (2019), which is an incredibly helpful resource for tuning random forest hyperparameters.
+Below, I describe four hyperparameters - `mtry`, node size, number of trees and sample size. Most of what I summarize below is explained in greater detail in Probst, Wright and Boulesteix [-@probst_hyperparameters_2019], which is an incredibly helpful resource for tuning random forest hyperparameters.
 
-1.  The hyperparameter `mtry` defines the number of randomly selected predictors to consider splitting at each node of the decision tree, ranging from 1 to *p*, the number of predictor variables. If you expect many relevant predictors with varying effect sizes, mtry should likely be set low since less influential variables will still be chosen and could provide performance gains. If you expect only a few relevant variables out of many (possibly hundreds), mtry should likely be set high so the algorithm can better find relevant variables (Probst et al, 2019).
+1.  The hyperparameter `mtry` defines the number of randomly selected predictors to consider splitting at each node of the decision tree, ranging from 1 to *p*, the number of predictor variables. If you expect many relevant predictors with varying effect sizes, mtry should likely be set low since less influential variables will still be chosen and could provide performance gains. If you expect only a few relevant variables out of many (possibly hundreds), mtry should likely be set high so the algorithm can better find relevant variables [@probst_hyperparameters_2019].
 
-    i)  The default value for regression in many packages is *p*/3, which has been shown to perform well enough. However, Genuer and colleagues (2008) have shown that in low dimensional regression problems (such as the one at hand), the square root of *p* performs better, which would be about 4.472 for my analysis. I will tune the `mtry` value, but will also create models with "default" values for hyperparameters for comparison.
+    i)  The default value for regression in many packages is *p*/3, which has been shown to perform well enough. However, Genuer and colleagues [-@genuer_random_2008] have shown that in low dimensional regression problems (such as the one at hand), the square root of *p* performs better, which would be about 4.472 for my analysis. I will tune the `mtry` value, but will also create models with "default" values for hyperparameters for comparison.
 
-2.  The hyperparameter `nodesize` describes the minimum number of data points in a leaf/terminal node. It sets the "depth" of trees, meaning that a lower setting leads to more splits being performed until reaching the terminal nodes, which contain fewer observations. The default value is 5 for regression in most statistical packages. Increasing the number of noise variables has been shown to lead to higher optimal node size (Segal 2004) and a higher value is computationally preferable. It has also been shown that higher `nodesize` values lead to overfitting on probability estimation (Barrenada et al. 2024), though this only applies to probability estimation. Again, though I will tune these hyperparameters, I will build other models with default values.
+2.  The hyperparameter `nodesize` describes the minimum number of data points in a leaf/terminal node. It sets the "depth" of trees, meaning that a lower setting leads to more splits being performed until reaching the terminal nodes, which contain fewer observations. The default value is 5 for regression in most statistical packages. Increasing the number of noise variables has been shown to lead to higher optimal node size [@segal_machine_2003] and a higher value is computationally preferable. It has also been shown that higher `nodesize` values lead to overfitting on probability estimation [@barrenada_understanding_2024], though this only applies to probability estimation. Again, though I will tune these hyperparameters, I will build other models with default values.
 
 3.  The hyperparameter "number of trees" (or `ntree`) refers to the number of individual trees needed to optimize the results of the random forest. The default value is often 500 in statistical packages. This parameter is not really "tunable", as more trees is always better for unbiased error terms. However, more trees directly leads to longer computation time. I will use large values for ntree for the purposes of this document, such as 8000. A number even around a few thousand is likely sufficient for my purposes, though a greater `ntree` can only improve performance (though minimally after a given point).
 
-4.  The hyperparameter "sample size" decides how many observations are sampled when training each decision tree. The default value is usually *n*. If you have a lower value than that, whether you are sampling with or without replacement also becomes a key matter (discussed later). Martinez-Munoz and Suarez (2010) observed that in most datasets, a sample size lower than the standard option tended to produce better performance.
+4.  The hyperparameter "sample size" decides how many observations are sampled when training each decision tree. The default value is usually *n*. If you have a lower value than that, whether you are sampling with or without replacement also becomes a key matter (discussed later). Martinez-Munoz and Suarez [-@martinez-munoz_outbag_2010] observed that in most datasets, a sample size lower than the standard option tended to produce better performance.
 
-A side note: There are several different validation strategies for a given algorithm that you can use in `caret` or `ranger` or whichever package you use, including bootstrapping, cross-validation, and repeated cross-validation. For random forest, you can also use out-of-bag predictions, which evaluates model performance on the data not selected when the data was bootstrapped as part of the bootstrap/aggregation process. Repeated cross-validation is often optimal when computationally appropriate. However, I will use out-of-bag error to save time and because it is appropriate and reliable for many datasets, as results appear to only be biased in extreme situations (e.g., *n* \< 20 with hundreds/thousands of predictors; Janitza & Hornung 2018).
+A side note: There are several different validation strategies for a given algorithm that you can use in `caret` or `ranger` or whichever package you use, including bootstrapping, cross-validation, and repeated cross-validation. For random forest, you can also use out-of-bag predictions, which evaluates model performance on the data not selected when the data was bootstrapped as part of the bootstrap/aggregation process. Repeated cross-validation is often optimal when computationally appropriate. However, I will use out-of-bag error to save time and because it is appropriate and reliable for many datasets, as results appear to only be biased in extreme situations (e.g., *n* \< 20 with hundreds/thousands of predictors; see [@janitza_overestimation_2018].
 
 ## Tuning Packages in R
 
 Machine learning packages, such as `caret`, contain plenty of functions to help tune models like random forest. For example, the `trainControl()` function is used to define the strategy used, such as repeated cross-validation. You also define if you'd like to search from a grid of predetermined values (`search = "grid"`) or from a random set (`search = "random"`) However, these methods of search can be quite time-consuming, not to mention rather basic (though I recommend reading more about this [at the link here](https://www.rdocumentation.org/packages/caret/versions/6.0-92/topics/trainControl).
 
-Instead, I am going to use a slightly more advanced method (sequential model-based optimization, or SMBO) implemented in a simple package, `tuneRanger`, for tuning. Probst and colleagues (2019), in their introduction to the package, state that SMBO is "a very successful tuning strategy that iteratively tries to find the best hyperparameter settings based on evaluations of hyperparameters that were done beforehand". More detail on the process can also be found in papers by Bischl and colleagues (2017) and Hutter and colleagues (2011). The implementation of SMBO in tuneRanger is computationally quick, simultaneously tunes 3 "tunable" parameters, and requires relatively few lines of code.
+Instead, I am going to use a slightly more advanced method (sequential model-based optimization, or SMBO) implemented in a simple package, `tuneRanger`, for tuning. Probst and colleagues [-@probst_hyperparameters_2019], in their introduction to the package, state that SMBO is "a very successful tuning strategy that iteratively tries to find the best hyperparameter settings based on evaluations of hyperparameters that were done beforehand". More detail on the process can also be found in papers by Bischl and colleagues [-@bischl_mlrmbo_2018] and Hutter and colleagues [-@coello_sequential_2011]. The implementation of SMBO in tuneRanger is computationally quick, simultaneously tunes 3 "tunable" parameters, and requires relatively few lines of code.
 
-Please note that tuneRanger uses bootstrap without replacement in the aggregation of the trees. Choosing to sample with or without replacement is an argument in most functions that build a random forest model. This only matters if your sample size hyperparameter is lower than *n*. Sampling with vs. without replacement does not change the model much particularly when the sample size parameter is "optimal" (Martinez-Munoz and Suarez (2010), but in situations with categorical variables with varying number of categories, a small variable selection bias may be present. I will stick to without replacement because `tuneRanger` does.
+Please note that tuneRanger uses bootstrap without replacement in the aggregation of the trees. Choosing to sample with or without replacement is an argument in most functions that build a random forest model. This only matters if your sample size hyperparameter is lower than *n*. Sampling with vs. without replacement does not change the model much particularly when the sample size parameter is "optimal" [@martinez-munoz_outbag_2010], but in situations with categorical variables with varying number of categories, a small variable selection bias may be present. I will stick to without replacement because `tuneRanger` does.
 
 (I am optimizing hyperparameters to have the model with the least mean squared error, given that I am conducting regression.)
 
@@ -448,8 +453,7 @@ rf_secondtuneranger <- readRDS("rf_secondtuneranger.rds")
 ```
 
 ## Training the Models
-
-Now that I have pulled some hopefully optimized settings for the parameters, I demonstrate building two random forest models with these parameters. I will use the `ranger` package, which is essentially a speedier implementation of the older `randomForest` package, which is what `caret` uses to create RF models. It is also a bit simpler to specify hyperparameters like minimum node size and sample fraction. However, if you have used `caret` or `mlr` to build machine learning models in the past, those are excellent options too.
+Now that I have pulled some hopefully optimized settings for the parameters, I demonstrate building two random forest models with these parameters. I will use the `ranger` package [@wright_ranger_2017], which is essentially a speedier implementation of the older `randomForest` package, which is what `caret` uses to create RF models. It is also a bit simpler to specify hyperparameters like minimum node size and sample fraction. However, if you have used `caret` or `mlr` to build machine learning models in the past, those are excellent options too.
 
 ```{r}
 #| label: Train models with `ranger`
@@ -489,10 +493,10 @@ rf_rangertunedmodel2 <- ranger::ranger(
 print(rf_rangertunedmodel2)
 ```
 
-Fairly similar results from the two models, which is expected given that one is likely just a bit more refined given extra iterations and trees. The tuned value for node size is pretty high, which means the trees are not fitting too deeply. Similarly, the `mtry` values are relatively high, indicating that my models seem to fit better when more variables are being sampled at each split. High values of `mtry` appear to be better for datasets containing a few relevant variables out of many (Goldstein et al. 2011), which may be the case here. Lastly, a lower sample size means the individual trees are more diverse and the out of the bag predictions should be solid in terms of estimating the optimal parameter.
+Fairly similar results from the two models, which is expected given that one is likely just a bit more refined given extra iterations and trees. The tuned value for node size is pretty high, which means the trees are not fitting too deeply. Similarly, the `mtry` values are relatively high, indicating that my models seem to fit better when more variables are being sampled at each split. High values of `mtry` appear to be better for datasets containing a few relevant variables out of many [@goldstein_random_2011], which may be the case here. Lastly, a lower sample size means the individual trees are more diverse and the out of the bag predictions should be solid in terms of estimating the optimal parameter.
 
 You will also notice that the out-of-bag r-squared for each model is not great - 0.146 and 0.145, respectively. This is likely for a few reasons - first, there are undoubtedly some noise variables in the predictors (possibly even constituting a majority). This means the model will train in part on random noise and a more parsimonious model would likely produce more accurate predictions, especially with tuned parameters (more on that in my `Methods for Variable Selection` addendum).
-Furthermore, this actually probably isn't actually too far from a usable R-squared in psychology research. Models of human behavior are often far from exact - for example, Wallert et al. (2018) used a random forest classifier model to predict adherence to internet cognitive behavioral therapy treatments for patients who suffered myocardial infarction. Their finalized model (after variable selection with the LASSO algorithm, which I go over in my `LASSO` addendum) reported an accuracy of 0.64. Such a low accuracy value might be surprising, but numbers in this range are usually decent for psychological research, given that human behavior is far more difficult to predict accurately than say, the genes that predict future occurrence of a disease.
+Furthermore, this actually probably isn't actually too far from a usable R-squared in psychology research. Models of human behavior are often far from exact - for example, Wallert and colleagues [-@wallert_predicting_2018] used a random forest classifier model to predict adherence to internet cognitive behavioral therapy treatments for patients who suffered myocardial infarction. Their finalized model (after variable selection with the LASSO algorithm, which I go over in my `LASSO` addendum) reported an accuracy of 0.64. Such a low accuracy value might be surprising, but numbers in this range are usually decent for psychological research, given that human behavior is far more difficult to predict accurately than say, the genes that predict future occurrence of a disease.
 
 Next, I'll take a look at random forest variable importance scores, which are useful for identifying important predictors in a given model. Recall that I am using permutation importance. However, keep in mind that such scores are relative to the model and can be wildly different from other measures of "importance" to predicting a DV (like zero-order correlation, for example). The scores I evaluate are unscaled.
 
@@ -515,7 +519,7 @@ importance_df2 <- importance_df2[order(-importance_df2$Importance), ]
 print(importance_df2)
 ```
 
-It appears that `score_PISA_ME` is far and away the most important variable in each model. Besides the dropoff after `score_PISA_me`, there is also a major dropoff around the 5th/4th variable in the models respectively. Recall that a lot of the predictors are intercorrelated - I may think, for example, "is math persistence giving me a lot of unique information that something like math self-efficacy is not?"
+It appears that `score_PISA_ME` is far and away the most important variable in each model. Besides the dropoff after `score_PISA_me`, there is also a major dropoff around the 5th/4th variable in the models respectively. Recall that a lot of the predictors are intercorrelated - I may be inclined to think here, for example, "is math persistence giving me a lot of unique information that something like math self-efficacy is not?"
 
 The variable importance metrics suggest to me that the dataset likely has somewhere around 4-5 variables that actually truly contribute to prediction and are not mostly noise variables, perhaps even fewer being truly strong predictors of the dependent variable. However, this measure of variable importance is relative, and simply selecting the top X many predictors is a simplistic and suboptimal method of variable selection. This is why I will conduct and compare several methods of feature selection on this dataset in my `Methods for Variable Selection` addendum, then retune the hyperparameters and refit random forest models using the selected feature list to test their predictions in the `Predictions` addendum.
 
@@ -572,4 +576,15 @@ default_importance_df2 <- default_importance_df2[
 print(default_importance_df2)
 ```
 
-The End Links to other Documents: `Methods for Variable Selection` `LASSO Addendum` `Predictions`
+The End 
+Links to other Documents: 
+`Methods for Variable Selection` 
+`LASSO Addendum` 
+`Predictions`
+
+## References
+*Note*: This references list contains additional works not cited in the article above, which I used to conduct my literature review when beginning to compose this document.
+
+::: {#refs}
+:::
+
