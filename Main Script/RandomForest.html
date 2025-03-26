@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 <meta name="author" content="Francisco N. Ramos">
-<meta name="dcterms.date" content="2025-02-25">
+<meta name="dcterms.date" content="2025-03-25">
 
 <title>Introducing Machine Learning Models for Psychologists - Random Forest</title>
 <style>
@@ -178,7 +178,7 @@ window.Quarto = {
     <div>
     <div class="quarto-title-meta-heading">Published</div>
     <div class="quarto-title-meta-contents">
-      <p class="date">February 25, 2025</p>
+      <p class="date">March 25, 2025</p>
     </div>
   </div>
   
@@ -445,7 +445,7 @@ Figure&nbsp;3: Distribution of predictors against the DV (sum_arith_perf)
 </div>
 </div>
 <p>The graphs created in the code above are shown on the next page, Page 11, in <a href="#fig-preds_DV" class="quarto-xref">Figure&nbsp;3</a>.</p>
-<p>Like much of psychological data, most of our predictors (and our DV) are not truly continuous. Our DV for example, <code>sum_arith_perf</code>, takes a fairly wide range of values, but it is clear from its distribution that is truly ordinal because it is measured on a scale. Furthermore, we are currently treating a few ordinal variables with few levels, such as the <code>liking</code> and <code>persistence</code> variables, as continuous, assuming there is a linear relationship between each level. You would need to check this in a real data project before proceeding. Otherwise, you may turn the ordinal variables into categorical variables (or use different models), though you would lose some information.</p>
+<p>Like most psychological data, most of our predictors (and our DV) are not truly continuous. Our DV <code>sum_arith_perf</code> takes a wide range of values, but it is clear from its distribution that it is technically ordinal because its values are discrete. Some readers may wonder if random forests are valid models of such a DV - in fact, some may also wonder if we need to check for a monotonic relationship between the levels of each of our ordinal predictors and the dependent variable, as one would when validating the assumptions of linear regression, for example. Thankfully, this isn’t the case - because decision trees simply choose “splitting points” to group participants in such a way that the mean squared error is minimized, they handle ordinal features and mildly discrete dependent variables very well. However, if your DV is an ordinal variable that only takes a few values, like 1-5, you might want to look into ordinal forests <a href="https://cran.r-project.org/web/packages/ordinalForest/ordinalForest.pdf">here’s a link to an implementation in R</a>.</p>
 <p><a href="https://imgur.com/a/yX6rj7t">Click here for a link to an image of the correlation table</a> provided by the original authors of the dataset, which contains the DV and most of the predictors I am evaluating. Many of the continuous predictors depicted are decently intercorrelated, which is fine because random forest handles this better than many other models (and there aren’t any correlations over .8 or .9, which would sound alarm bells). Furthermore, correlations go in the “expected” directions - e.g., arithmetic performance correlates positively with liking math and math self-efficacy correlates negatively with all anxiety measures.</p>
 <p>This exploratory data analysis is light, but that is only because I want to focus on the model building and tuning. For a real project, graph all of your variables, transform predictor or outcome variables if needed, and use alternatives to omitting missing data in order to keep statistical power as high as possible (such as multiple imputation).</p>
 </section>
