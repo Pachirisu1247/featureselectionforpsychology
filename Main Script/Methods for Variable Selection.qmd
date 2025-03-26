@@ -5,6 +5,7 @@ editor: visual
 ---
 
 ## Manual and Automated Feature Selection Methods: VSURF, Boruta, RFE
+
 ```{r}
 #| label: fig-preds_DV_2
 #| warning: false
@@ -185,6 +186,7 @@ cat("Selected variables:", paste(optimal_variables, collapse = ", "), "\n")
 plot(oob_errors, type = "b", xlab = "Number of Variables", ylab = "OOB Error (RMSE)",
      main = "OOB Error vs. Number of Variables")
 ```
+
 ```{r}
 # LM models.
 
@@ -199,7 +201,6 @@ plot(linearrfmodel2)
 
 
 ```
-
 
 As an addendum to `Introducing Machine Learning Models for Psychologists - Random Forest`, I will walk through a manual example of a variable selection procedure described in the literature for random forest as well as provide several examples of explicit automated methods for variable selection. VSURF, the first method I will describe, essentially uses backward stepwise selection followed by forward selection based on variable importance (using a basic definition as we used above being, depending on the task, the difference between MSE/misclassification rate after permuting each predictor). There have been several methods for variable selection described in the literature, however, a recent simulation study demonstrated that VSURF often demonstrates some of the best performance for classification tasks (Speiser et al.), which may extend to regression. However, it is worth noting that VSURF is prediction oriented and as such, accepts the risk of producing false negatives.
 
