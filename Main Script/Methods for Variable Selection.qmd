@@ -1,90 +1,790 @@
 ---
-title: "Methods for Variable Selection - Random Forest"
-format: html
-editor: visual
+title: "Addendum to Random Forest - Methods for Variable Selection"
+author: "Francisco N. Ramos"
+date: today
+format:
+  html:
+    number-sections: true
+    toc: true        
+    toc-depth: 3   
+    toc-float: true
+    toc-scroll: true
+    
+knitr:
+  opts_chunk: 
+    collapse: true
+    echo: true
+    results: "markup"
+    message: true
+    warning: true
+    R.options:
+      knitr.graphics.auto_pdf: true
 ---
 
-## Manual and Automated Feature Selection Methods: VSURF, Boruta, RFE
-
-```{r}
-#| label: fig-preds_DV_2
-#| warning: false
-#| fig-cap: "Distribution of predictors against the DV (Page 2)"
-#| fig-width: 12
-#| fig-height: 10
-#| fig-pos: "H"
-
-facet_plot_1 <- ggplot(
-  long_data, aes(x = Value, y = .data[[response_variable]])) +  
-    geom_point(alpha = 0.7, color = "lightblue") +  
-    geom_smooth(method = "lm", color = "red", se = FALSE) +  
-    geom_smooth(method = "loess", color = "green", se = FALSE) +  
-    facet_wrap_paginate(~Predictor, ncol = 3, nrow = 3, scales = "free", 
-                      page = 1) +  
-  theme(axis.text = element_text(size = 8))
-
-facet_plot_1
-
-
-
-
-# Create paginated facet plot (Page 2)
-facet_plot_2 <- ggplot(
-  long_data, aes(x = Value, y = .data[[response_variable]])) +  
-    geom_point(alpha = 0.7, color = "lightblue") +  
-    geom_smooth(method = "lm", color = "red", se = FALSE) +  
-    geom_smooth(method = "loess", color = "blue", se = FALSE) +  
-    facet_wrap_paginate(~Predictor, ncol = 3, nrow = 3, scales = "free",
-                        page = 2) +  
-  theme(axis.text = element_text(size = 8))
-
-facet_plot_2
+```{r setup, include=FALSE}
+# Set the theme globally for all plots
+library(ggplot2)
+library(here)
+library(tidyverse)
+library(readr)
+theme_set(theme_minimal())
 ```
 
-```{r}
+# Addendum: Methods for Variable Selection - Random Forest
 
-# Write a function to generate the plots
-plot_scatter_smooth <- function(data, x_var, y_var) {
-  ggplot(data, aes(x = .data[[x_var]], y = .data[[y_var]])) +  
-    # Using .data[[var]] for tidy evaluation. Actual objects passed in 
-    # the `lapply()` function later on
-    geom_point(fill = "lightblue", alpha = 0.7) + # fill of the plot
-    geom_smooth(method = "lm", color = "red", se = FALSE) +  
-    # for linear trendline
-    geom_smooth(method = "loess", color = "blue", se = FALSE)
-    # for nonlinear trend line
+## Introduction
+
+As an addendum to [`Introducing Machine Learning Models for Psychologists - Random Forest`](https://mmmlab.rbind.io/posts/2025-03-25-random-forest/), I will demonstrate several examples of formalized variable selection (also called feature selection) procedures described in the literature for random forest models. Please read the original post first if you have not done so already. The feature selection step, which may be carried out before (or during) model tuning, consists of choosing which variables from a complete dataset to include in a model. This step was omitted in the original blog post on fitting random forest models for didactic purposes. However, the performance of finalized models produced in this `Methods for Variable Selection` addendum and the original `Introducing Machine Learning Models for Psychologists - Random Forest` post will be assessed on a hold-out test dataset in a forthcoming `Predictions` addendum to identify the techniques and parameters resulting in the models best predictive of the test set.
+
+There are several reasons as to why variable selection is often performed when fitting a machine learning model such as a random forest, despite the common application of random forest in modeling *p* $\ggg$ *n* situations. To name a few examples, first, it is computationally intensive and often impractical to analyze an excessively large set of predictors, which is why finding a subset of predictors that offers similar or even improved model performance to the complete set of predictors is valuable (Chowdhury & Turin 2020). Second, it is unlikely that all collected variables in a dataset provide predictive value, and as such modeling with the complete set of predictors can overfit on noise in the training data or lower the chance that important predictors are selected at each split (recall the hyperparameter `mtry`, the number of candidate variables selected at each tree split). Finally, including too many predictors that are strongly correlated with one another but differ in their relationship with the DV can lead the model to misinterpret the relative importance of each variable --- we revisit this in the following section. In fact, if possible, it is often preferable to begin variable selection building up, i.e. begin with only the predictors that expert opinion or research deem important to the outcome to avoid including too many irrelevant predictors.
+
+Lastly, there is an important distinction to be made of whether one is performing feature selection for what I will call *prediction* or *interpretation*. Feature selection for *prediction* indicates that you are interested in finding a subset of predictors from the full dataset that produce the best possible classification or regression results (Kursa & Rudnicki, 2010). Many machine learning models exhibit decreased prediction when too many predictors, particularly irrelevant predictors, are included in the model. Failure to perform feature selection on a large dataset can encourage future collection of unnecessary data that barely improves or even worsens prediction. Feature selection for *interpretation*, instead, indicates that you are primarily interested in selecting *all* predictors that are relevant to the DV (Genuer et al. 2010). This signifies that you want to understand the mechanisms behind the subject at hand by identifying all variables that can impact the outcome (even if correlated with other predictors). I revisit these aims later on, particularly when discussing the `Boruta` package.
+
+### Variable Selection Methods to be Reviewed
+
+Essentially all statistical software for a random forest model can output variable importance scores (VIMPs), which I refer to as *default* VIMPs. These default scores are usually either calculated in one of two ways: "impurity", the total decrease in the node impurity (Gini impurity for classification, response variance for regression) when a variable is used for splitting across all trees; or the more robust "permutation" VIMP, the decrease in model performance when a variable's values are randomly shuffled in the "out-of-bag" (OOB) samples, breaking its association with the outcome variable.
+
+**Unfortunately**, despite their prominence in the medical and psychological literature utilizing random forest analyses, there are several well-documented sources of bias in default VIMPs that may impact their interpretation. First, due to the underlying CART algorithm creating each individual decision tree, differences in the range of potential values that predictors take on biases the calculation of their importance scores [-@strobl_bias_2007]. For example, although after many runs, two uninformative predictors will display unbiased permutation-based default VIMPs *on average* (mean=0), the predictor with a wider range of values will have greater variance in mean score across runs, and its importance may be under- or over-estimated in a single trial as a result of this bias. The mean score for impurity-based default VIMPs, on the other hand, *IS* also biased in addition to its variance by a predictor's range of values, making it even less desirable. A much smaller but compounding bias stems from the standard practice of bootstrapping with replacement, which makes high-cardinality variables more susceptible to spurious associations with the dependent variable. However, bootstrapping *without* replacement appears to remove this effect. Finally, default importance measures can inflate the importance of features that are highly correlated with other features but less correlated with the DV, though this is in many practical cases difficult to avoid.
+
+Because "default" variable importance measures are still commonly seen in the literature and to demonstrate how complex but unbiased feature selection methods supersede more simple but flawed methods, I first describe two algorithms that attempt to build upon default VIMPs to create more robust feature selection processes. These are the fairly computationally light `VSURF` and `Boruta`. To combat bias in score variance, I follow suggestions by Strobl and colleagues [-@strobl_bias_2007] to test the stability of the results using various forms of cross-validation (CV). Afterwards, I demonstrate a more intensive modeling alternative to random forest called conditional inference forest, designed to correct for the bias in VIMPs stemming from differences in variable range (and the bias inherent to bootstrapping aggregation, though only when sampled without replacement). Finally, I finish with a brief example of recently-described alternative VIMP metrics entitled "knockoff" VIMPs, which are simulated versions of a predictor that have similar distributions and correlations as the original predictor but no association with the outcome. The "knockoff" method is computationally intensive but creates much more rigorous VIMPs.
+
+(There are many random forest feature selection methods described for use with default VIMPs (Speiser et al. 2013). Although `VSURF` and `Boruta` are relatively simple and powerful for many datasets, I encourage the reader to search for more options if desired --- to give two examples, the [randomForestSRC](https://cran.r-project.org/web/packages/randomForestSRC/index.html) and [varSelRF](https://cran.r-project.org/web/packages/varSelRF/index.html) packages.
+
+## Notes on Scaling and Intercorrelated Predictors
+
+As stated in my original blog post, standardization of predictors is not required for random forest models, as they split based on the ordering of a variable's values rather than its scale. You may consider coding your ordinal variable with a small range of values as categorical, especially if its relationship with the DV appears irregular, but this loses ordering information and I choose not to do so for this analysis.
+
+In a real research setting, I would first consider manually removing predictors that strongly correlate with other predictors yet show little apparent relationship with the DV in order to reduce the aforementioned bias in VIMPs caused by modeling many correlated predictors. However, because random forest models and their VIMPs are commonly used in such situations and I plan to demonstrate the superiority of conditional and "knockoff" methods to adjust for bias, I begin with the same full set of 20 predictors used in my original blog post for didactic purposes.
+
+Lastly, there is the question of whether to use unscaled VIMPs or their scaled equivalents (divided by standard deviation), as most packages differ in whether they have scaling importance scores as TRUE or FALSE by default. Strobl and colleagues (2007, 2008) note that scaled variable importance appears to be biased by the number of trees grown in the model and recommend not interpreting scaled scores in most cases. Thus, I rely on unscaled importance scores for interpretation.
+
+## Importing the Data
+
+Below, I reprint the data import and cleaning code from the original blog post, [`Introducing Machine Learning Models for Psychologists - Random Forest`](https://mmmlab.rbind.io/posts/2025-03-25-random-forest/), regarding variable selection in Random Forest models. We are again using the AMATUS dataset and the 20 variables detailed in that post.
+
+I have loaded all libraries I do not emphasize in a hidden code chunk at the top of this page, so when recreating my code, make sure to install and/or load necessary libraries when prompted.
+
+```{r}
+#| label: Load packages, clean data
+#| warning: false
+here::i_am("Dr. Lai Feature Selection Project 9.13.24.rproj")
+# I manually set "here" to the folder containing my rproj file.
+
+file_path <- normalizePath(here::here(
+  "Main Script/OSF archive/AMATUS_dataset.csv"
+))
+# Also adjust this as needed. Function from base R.
+
+# Importing dataset
+amatus <- readr::read_csv2(file_path, c("", "NA"), col_names = TRUE)
+# Note that the `c()` function is defining
+# what NA values look like for the import function.
+
+View(amatus)
+# View the data.
+
+amatusclean <- amatus[!is.na(amatus$sum_arith_perf), ]
+# Removing the individuals who did not complete the performance test in order
+# as instructed. Using simple subsetting.
+amatusclean <- amatusclean[!(amatusclean$sample %in%
+  c("german_teachers", "belgian_teachers")), ]
+# Removing the 2 teacher samples from the dataset, as I am only # interested in
+# the student sample.
+
+View(amatusclean)
+
+# Data cleaning (using tidyverse syntax this time around):
+amatusclean <- amatusclean %>%
+  dplyr::filter(!is.na(sum_arith_perf)) %>%
+  dplyr::mutate(across(c(
+    sex, age_range, breaks, honesty, native_speaker, noise
+  ), as.factor))
+# `filter()` removes the individuals who did not complete the performance test
+# in order as instructed. `mutate()` applies the `as.factor()` function to all
+# categorical/factor variables.
+
+# I also want to reverse the order of the math grade variable so a 1 is the
+# worst grade for simplicity to match every other variable, where lower
+# values correspond to having "less" of or being "worse" at the concept.
+
+amatusclean <- amatusclean %>%
+  dplyr::mutate(math_grade = recode(math_grade,
+    `1` = 6,
+    `2` = 5,
+    `3` = 4,
+    `4` = 3,
+    `5` = 2,
+    `6` = 1
+  ))
+View(amatusclean)
+
+invisible(colSums(is.na(amatusclean)))
+# It appears there is only one NA value in the variables of interest from the
+# dataset - in the math load variable. Remove the `invisible()` function from
+# the line above to print the results and see for yourself. For simplicity,
+# I will just drop this value. There are 734 data points now, as demonstrated.
+amatusclean <- subset(amatusclean, !is.na(math_load))
+nrow(amatusclean)
+
+
+# Let's also isolate the variables in objects now for easier use later on.
+numeric_predictors <- c(
+  "score_BFI_N", "score_AMAS_total", "age", "score_GAD",
+  "score_PISA_ME", "score_STAI_state_short",
+  "score_TAI_short", "score_SDQ_L", "score_SDQ_M",
+  "total_time_minutes", "math_grade", "math_load",
+  "math_inf_program_choice", "liking_math",
+  "liking_science", "liking_humanities",
+  "persistence_math", "persistence_science",
+  "persistence_humanities"
+)
+categorical_variable <- "sex"
+response_variable <- "sum_arith_perf"
+
+all_predictors <- c(numeric_predictors, categorical_variable)
+
+
+# Create training set using same seed as in our original blog post.
+set.seed(39)
+inTrain <- caret::createDataPartition(amatusclean$sum_arith_perf,
+  p = 0.7, list = FALSE
+)
+# 0.7 will sort 70% of the records into training set, 30% into the test
+# set. I selected 0.7 to have a decent number of N in the test set.
+
+# Create training vs test data using subsetting.
+only_vars <- c(all_predictors, response_variable)
+
+training <- amatusclean[inTrain, only_vars]
+test     <- amatusclean[-inTrain, only_vars]
+
+training <- as.data.frame(training)
+test <- as.data.frame(test)
+
+
+```
+
+## VSURF
+
+[`VSURF`](https://cran.r-project.org/web/packages/VSURF/index.html), the first method I describe, uses a three-step variable selection procedure --- after the first step conservatively removes variables with extreme irrelevance, VSURF will attempt to select all variables potentially related to the DV for *interpretation* purposes---in other words, all variables that could be related to the DV in a particular model. In the optional third step, `VSURF` further selects a subset of variables for *prediction* in an attempt to minimize the number of predictors while maintaining a high level of predictive accuracy.
+
+A recent simulation study demonstrated that `VSURF` (alongside a novel variable selection method by Jiang et al. \[2004\]) appears to demonstrate some of the best performance for classification tasks (Speiser et al.), which may extend to regression. It is worth noting that VSURF generally accepts the risk of producing false negatives with regards to the key variables because it is prediction-oriented. With regards to tuning the model (discussed in my original blog post), VSURF's main function `vsurf()` takes as arguments, among others: `mtry`, `ntree`, and `RFimplem`, the latter of which determines which implementation of random forest R will use. `nodesize` and `samplesize` are not included. Two other arguments, `nmin` and `nsd`, determine the sensitivity of the VSURF selection process at interpretation and prediction, respectively. We will leave these at their default values of 1, but they can be quickly edited after model fitting using `VSURF::tune()` if desired.
+
+My code below generally follows the feature selection procedure outlined in Kuhn and Johnson (2013), specifically their Algorithm 19.5, substituting `VSURF` for recursive feature elimination. Within each cross-validation fold, I first run `VSURF` to select two sets of features, one for interpretation and one for prediction. Then, I use `tuneRanger()` to optimize hyperparameters for each feature set before fitting final models with the tuned parameters and evaluating their performance on the fold's test data. Ideally, we might tune hyperparameters before feature selection to better guide the selection process, or even optimize both steps jointly. However, `VSURF()` cannot be passed preset parameters when using the speedier `ranger` implementation of random forests, and true joint optimization would be computationally intensive. Furthermore, while adding an inner cross-validation loop around `VSURF` could help ensure truly unbiased performance estimates, I follow the authors' framework directly in this case and do not include nested CV. `tuneRanger()` actually does implement OOB resampling in its algorithm, so additional resampling is not needed for that step. I defer full nested CV to the explanation of `Boruta` in @sec-boruta-chapter, which *does* accept parameters from tuneRanger().
+
+I set the random seed before the main CV loop for reproducibility. The run below took my laptop, with the Mac M2 chip, about 5-10 minutes. The script is denser than in my original blog post - I add more comments accordingly.
+
+### VSURF Run and Analysis
+
+```{r}
+#| label: VSURF CV with summary (K&J-compliant)
+
+required_pkgs <- c("VSURF", "furrr", "future", "rsample", "yardstick", "progressr", "tidyverse", "ranger", "tuneRanger", "mlr")
+lapply(required_pkgs, function(pkg) {
+  if (!require(pkg, character.only = TRUE)) install.packages(pkg, repos = "http://cran.us.r-project.org")
+})
+
+library(tidyverse) # Loads `dplyr` and other simple, necessary packages.
+library(progressr) # Rudimentary progress bar
+library(future) # Used for parallel processing
+library(furrr) # Allows map() functions to run in parallel
+library(rsample) # Creates cross-validation splits
+library(VSURF) # The variable selection method in question
+library(ranger) # Fast random forest implementation
+library(tuneRanger) # Hyperparameter tuning with `ranger`
+library(mlr) # Required for `tuneRanger` task creation
+
+plan(multisession, workers = future::availableCores() - 1) 
+# Sets up parallel processing using the number of cores in the CPU minus one
+# to allow one core to still work on other things. "Worker" is the `future` 
+# term for a parallel R process that executes a task.
+set.seed(2025) 
+# Seed before main CV for replication.
+
+outer_cv <- vfold_cv(training, v = 10, repeats = 5)
+# Create cross-validation splits. Here, we split into 10 folds and repeat 5x.
+
+# First, we create a simple function to coerce predictors to numeric when needed, 
+# as I was getting a lot of conversion to matrix errors before doing this.
+safe_numeric_conversion <- function(vec) {
+  if (is.numeric(vec)) {
+    return(vec)
+  } else if (is.factor(vec) || is.character(vec)) {
+    suppressWarnings(as.numeric(as.character(vec)))
+  } else {
+    return(vec)
+  }
 }
 
-# Generate plots using the predictor variables
-plots <- lapply(numeric_predictors, function(var) plot_scatter_smooth(amatusclean, var, response_variable))
+# First, I define the function that will eventually tune the hyperparameters and
+# fit the final random forest models for performance evaluation.
+tune_and_fit_ranger <- function(selected_vars, train_data, test_data) {
+  model_data <- train_data[, c(response_variable, selected_vars), drop = FALSE]
+  model_data <- as.data.frame(model_data)
+  # The function subsets the outer fold's training data to keep only the
+  # predictors selected by `VSURF()` at each fold. Of course, we'll set up that 
+  # `VSURF()` part after writing this function, as it doesn't exist yet.
 
-# Display plots
-plots[1:2]
+for (col in selected_vars) {
+  model_data[[col]] <- safe_numeric_conversion(model_data[[col]])
+}
+# We apply numeric conversion before passing predictors to `tuneRanger()`.
 
-library(ggplot2)
+  task <- mlr::makeRegrTask(data = model_data, target = response_variable)
+  # `tuneRanger()` requires its input to be in the form of a "task", which
+  # is a simple wrapper for the dataset, response variable, and type of
+  # problem (here, `makeRegrTask()` indicates a regression task.)
+  tuned <- tuneRanger(
+  # Here is the actual call to `tuneRanger()`.
+    task = task,
+    num.trees = 1000,
+    tune.parameters = c("mtry", "sample.fraction", "min.node.size"),
+    # Same parameters tuned in my original blog post.
+    num.threads = 1 
+    # This line should prevent any issues with the `future` parallelism later.
+  )
+
+  model <- ranger(
+  # Here is the final call to `ranger()`, which will fit the models to be
+  # evaluated using the hyperparameters tuneRanger()` found above.
+    formula = as.formula(paste(response_variable, "~ .")),
+    data = model_data,
+    num.trees = 1000,
+    mtry = tuned$recommended.pars$mtry,
+    # `tuneRanger()` creates the component "recommended.pars.", which contain 
+    # the tuned hyperparameters.
+    min.node.size = tuned$recommended.pars$min.node.size,
+    sample.fraction = tuned$recommended.pars$sample.fraction,
+    # We could manually define the number of iterations to run through like in 
+    # my original blog post, but the default values should be good enough.
+    replace = FALSE, 
+    # This argument defines sampling with vs without replacement. As discussed
+    # in the introduction, though minor, we choose to sample without replacement
+    # to avoid potential bias towards high-cardinality predictors.
+    splitrule = "variance", # default for random forests.
+    importance = "permutation"
+  )
+
+  test_subset <- test_data[, selected_vars, drop = FALSE]
+  test_subset <- as.data.frame(test_subset)
+  # We now subset the TEST data to only include selected predictors and ensure
+  # it is in the form of a data frame.
+
+for (col in selected_vars) {
+  test_subset[[col]] <- safe_numeric_conversion(test_subset[[col]])
+}
+# We apply numeric conversion to the test set.
+
+  preds <- predict(model, data = test_subset)$predictions
+  # We use `ranger`'s built-in `predict()` function to generate predictions.
+  truth <- test_data[[response_variable]] # Also called the "actuals".
+
+  rmse <- sqrt(mean((truth - preds)^2))
+  rsq <- 1 - sum((truth - preds)^2) / sum((truth - mean(truth))^2)
+  # We manually calculate the RMSE and r-squared for each
+  # set of predictions -  we feed the predictions into this function later on.
+
+  perf <- tibble(
+    .metric = c("rmse", "rsq"),
+    .estimate = c(rmse, rsq)
+  )
+  # We create a tibble (a "tidy" version of a dataframe) with actuals and
+  # predictions (preds).
+
+  return(perf)
+}
+# End of the `tune_and_fit_ranger()` function.
+
+
+# Now, I define the function to run the outer fold prediction process, which
+# internally calls the `tune_and_fit_ranger()` function above. Of course, we 
+# want to run `VSURF()` first, then fit/tune the model, then test performance.
+run_outer_fold <- function(split_obj, i, p) {
+# split_obj is the given split object in question, i is simply for clean console
+# output, and p is the progress function, which I define a little later.
+  cat("Running", outer_cv$id[i], "\n") 
+  # Console message to print current fold.
+  # If you wanted to, you could manually set seed here for reproducibility at the
+  # fold level, like `set.seed(2025+i)`, but we'll set `seed = TRUE` in 
+  # `furrr_options` later on, which does a similar thing.
+  outer_train <- analysis(split_obj)
+  # Pulls "training" data from current outer fold.
+  outer_test  <- assessment(split_obj)
+  # Pulls "test" data from current outer fold.
+
+  vsurf_model <- VSURF(
+  # `VSURF()` call.
+    x = as.data.frame(outer_train[, all_predictors]),
+    y = outer_train[[response_variable]],
+    ntree = 5000, # High value. You likely don't need this many.
+    RFimplem = "ranger", 
+    # Speedier than others, but can't be passed hyperparameters here manually.
+    replace = FALSE, 
+    # sampling with vs without replacement.
+    parallel = FALSE, # again,should prevent issues with my parallelism later.
+    verbose = FALSE
+  )
+
+  interp_vars <- all_predictors[vsurf_model$varselect.interp]
+  pred_vars <- all_predictors[vsurf_model$varselect.pred]
+  # We save the variables selected at interpretation and prediction respectively
+  # into their own objects.
+
+  if (length(interp_vars) <= 1 & length(pred_vars) <= 1) {
+    # I skip folds where fewer than two variables are selected by VSURF. These
+    # will be filtered out of results later.
+    p()
+     # Still call `p()` to advance the progress bar for this fold.
+    return(NULL)
+  }
+
+  # Now, we set up the `tune_and_fit_ranger()` function to be run within this 
+  # `run_outer_loop()` function to finish the task.
+  interp_perf <- tune_and_fit_ranger(interp_vars, outer_train, outer_test)
+  # Run it for the interpretation set of variables.
+  pred_perf <- tune_and_fit_ranger(pred_vars, outer_train, outer_test)
+  # Run it for the interpretation set of variables.
+
+  p()
+  # After the full outer loop process completes above, we call `p()`. This tells 
+  # the progress bar we create soon with `with_progress()` to advance one tick.
+  
+  list(
+    interp_vars = interp_vars,
+    pred_vars = pred_vars,
+    performance_interp = interp_perf,
+    performance_pred = pred_perf
+  # This list simply holds the results of one outer CV fold - the variables
+  # selected at each step as well as the performance of each fold. Remember that
+  # we have 50 total folds - 5 repeats of 10 folds.
+  )
+}
+# End of the `run_outer_loop` function.
+
+
+with_progress({
+# This function is from the `progressr` package and initializes the progress
+# system. Once I define a progressor function `p` below, the `p()` calls in 
+# `run_outer_fold()` will update the progress bar in console output.
+  p <- progressor(along = outer_cv$splits)
+  # Here, I define the "p" function you saw above. I want one unified progress 
+  # bar for the entire process.
+  results <- future_map2(
+  # This is the key line here. `future_map2()`, from `furrr`, is the 
+  # "parallelized" version of `purrr::map2()`. This means it runs `map2()` over 
+  # multiple CPU cores with the help of the parallelizing package `future`.
+  # `map2()` is like the base function `mapply()`, which applies a function to
+  # multiple objects, but can only apply it to two inputs. 
+  # `results` will be a list object by default, by the way.
+    outer_cv$splits, seq_along(outer_cv$splits),
+    # Here, we define the inputs that the function ran by `future_map2()` will 
+    # be applied to (that function being `run_outer_fold()`). The first input is
+    # the cross-validation splits data, which  `run_outer_fold()` takes as its 
+    # `splits` object. The second input is the index of each of the folds, which
+    # we used in `run_outer_fold()` to label console output and again after the 
+    # entire loop is completed to name results.
+    ~ run_outer_fold(.x, .y, p),
+    # Applies the function to each pair of arguments - a split and its 
+    # corresponding index. We also pass the `p` function we created earlier so 
+    # the progress bar advances after a fold is processed.
+    .options = furrr_options(seed = TRUE)
+    # This sets a reproducible random seed for each parallel "worker". Since I 
+    # set the "global" seed to 2025 earlier (before any random operations), as 
+    # long as seed is set to 2025, the results of this CV loop will always be
+    # reproducible, even with parallel computation.
+  )
+})
+# The main code to create the CV loop is now complete. We proceed to cleaning 
+# and saving results.
+
+# We want to make sure we handle NULL entries, which are cases where no 
+# variables were selected, to prevent errors.
+results_nonnull <- results[!sapply(results, is.null)]
+# This line subsets the `results` list we created above. It does this by 
+# applying `is.null()` to each element in the list and removing entries that are
+# NOT null (hence the exclamation point).
+
+names(results_nonnull) <- outer_cv$id[!sapply(results, is.null)]
+# This assigns non-null fold IDs as names to `results`, which is now called 
+# `results_nonnull`. These are names like "Repeat1-Fold1" or "Repeat2-Fold5".
+
+interp_vars_list_all <- lapply(results_nonnull, `[[`, "interp_vars")
+# Recall that `results_nonnull` is a list of results from each CV fold. Each of 
+# the (up to) 50 items in the list is itself a list that saves selected variables
+# and performance metrics for that fold. Here, we use `lapply()` so that for 
+# each item in `results_nonnull`. `[[` extracts and saves the value of 
+# the element "interp_vars" for that item ( being the names of the variables
+# selected for that fold at the interpretation step).
+pred_vars_list_all <- lapply(results_nonnull, `[[`, "pred_vars")
+# Same as above, except now we extract the value of the element  "pred_vars" for
+# each item/sublist in the full list, which will be the names of the variables 
+# selected for that fold at the prediction step.
+performance_interp_list <- lapply(results_nonnull, `[[`, "performance_interp")
+# Same again, but for performance metrics at the interpretation step.
+performance_pred_list <- lapply(results_nonnull, `[[`, "performance_pred")
+# Same again, but for performance metrics at the prediction step.
+
+freq_table <- function(lst) table(unlist(lst))
+# We create a small helper function to take a list (here, a list of vectors
+# saving the variable names selected in each fold), "unlist" it into
+# one vector, and count how often each variable appears with `table()`.
+freq_interp <- freq_table(interp_vars_list_all)
+# We apply the function above to count how many times a variable was selected
+# at the interpretation step over up to 50 cross-validation folds.
+freq_pred <- freq_table(pred_vars_list_all)
+# Counts how many times a variable was selected at the prediction step.
+
+final_interp_vars <- names(freq_interp[freq_interp > 5])
+# Saves variable names selected more than 5 times out of all (up to 50) CV 
+# splits for interpretation. Easier to visualize without unstable variables.
+final_pred_vars <- names(freq_pred[freq_pred > 5])
+# Same as above, but for variables selected for prediction.
+
+# Finally, I save all of the objects I've created: the full `results` object,
+# the selected variable names at each fold, performance metrics of each fold, 
+# and the tables I created using the `freq_table()` function.
+output <- list(
+  results = results,
+  interp_vars = interp_vars_list_all,
+  pred_vars = pred_vars_list_all,
+  freq_interp = freq_interp,
+  freq_pred = freq_pred,
+  final_interp_vars = final_interp_vars,
+  final_pred_vars = final_pred_vars,
+  performance_interp = performance_interp_list,
+  performance_pred = performance_pred_list
+)
+
+saveRDS(output, "vsurf_nested_results_with_summary.rds")
+# I save the full `output` list into an RDS file for easy loading later on.
+plan(sequential)
+# I reset the parallel processing we had set up - R goes back to running tasks 
+# one after the other using one core/worker.
+
+
+###---###
+
+# Show how many nulls we had.
+sum(sapply(results, is.null))
+
+
+```
+
+We can see a ton of information about this set and its most important variables already. First, we note that 14 `NULL` folds returned, indicating that only one variable was returned in 28% of folds, all of which were skipped. The output of `freq_interp` and `freq_pred` is as follows:
+
+```{r}
+#| echo: false
+freq_interp
+freq_pred
+```
+
+I note that 14 `NULL` values in 50 folds, indicating that only one variable was returned in 28% of folds, all of which were skipped.
+`freq_pred` is fairly straightforward: `score_PISA_ME` was selected in 33 out of 36 folds and `sex` in 31. All other variables were selected 8 or fewer times. This suggests for the purpose of prediction, `VSURF` seems to prioritize those two variables, an outcome I will attempt to confirm later on when reviewing the best-performing folds. However, `freq_interp` is a different story --- eight variables were selected over 20 times. Of those, `score_PISA_ME` and `sex` were chosen the most times again, followed by `liking_math` and `math_grade` just behind them. Eight other variables were selected in an interpretation model at least once. 
+
+The number of `NULL` values and discrepancy between the number of variables selected by the two methods is not unexpected. Like we began to discuss in my original blog post, there don't appear to be too many truly relevant variables in this dataset. This is a commonly-seen case in psychological datasets --- it appears to be the case that the dataset has a few dominant predictors that should be sufficient to produce near-optimal predictive performance on their own. On the other hand, more than a few predictors passed the interpretation step, appearing to have some signal/relationship with the outcome. The naturally more permissive interpretation threshold and the likely case that most predictors have small effect sizes help to inflate the relative importance of variables that appear to show a weak signal due to correlation with other predictors or high cardinality. As a result, though some of these variables may have true low-effect signals, others may be spurious or artifacts of correlated features (like `persistence_math` and `math_grade`), and only domain knowledge, further evaluation of their stability across folds and true model performance can help you identify which are which. 
+
+Performance will likely modestly improve using the 8 predictor dataset over the 2 predictor dataset, though the bump in performance may not be worth the resources unless you are interested in interpretation, i.e. finding all relevant variables. We may retain all 9 of these variables when building our final models to be tested on the holdout test set.
+
+However, there is another part of the story. We saved the metrics for each model, and we will now use them to evaluate the same questions of variable selection frequency in the folds with the lowest RMSE/highest R-squared to assess whether the most predictive models also tended to select same subsets of variables.
+
+### Analyzing the Best-Performing Folds
+so we will save a model with those two to test model predictions later
+```{r}
+# Write a function to summarize the most frequently selected variables from 
+# the folds with the best performance. This will be another useful piece of 
+# information to evaluate the results of `VSURF()`.  
+summarize_top_variables <- function(
+    output_object, which = "interp", metric = "rmse", top_n = 10) {
+    # We specify "interp", "rmse", and 10 as the default values for their 
+    # respective arguments.
+  
+      # First, select the relevant lists from the full `output` object depending
+      # on the type of variable selection: for interpretation or prediction.
+      if (which == "interp") {
+        perf_list <- output_object$performance_interp
+        var_list  <- output_object$interp_vars
+        label <- "INTERP"
+        # Labels are used later to create cleaner console output.
+      } else if (which == "pred") {
+        perf_list <- output_object$performance_pred
+        var_list  <- output_object$pred_vars
+        label <- "PRED"
+      } else {
+    stop("Invalid 'which' argument. Use 'interp' or 'pred'.")
+      }
+      # We define an object, `metric_values`, by applying a function we define
+      # below to each element in the `perf_list` we created above - each element
+      # being one fold's performance tibble. The function handles missing/null
+      # entries.
+      metric_values <- sapply(perf_list, function(perf) {
+        if (is.null(perf)) {
+          return(ifelse(metric == "rmse", Inf, -Inf))
+        # If the fold was NULL, we set its metric to positive/negative infinity 
+        # to ensure that fold ranks last in performance.
+        }
+        val <- perf %>%
+          filter(.metric == metric) %>%
+          # Recall that `.metric` is the name of the column in the `perf` 
+          # metrics tibble that labels whether the `.estimate` value is for RMSE
+          # or r-squared. I filter for the metric requested in 
+          # `summarize_top_variables()`.
+          pull(.estimate)
+          # I pull out the value for the estimate for the selected metric.
+        if (length(val) == 0) {
+          return(ifelse(metric == "rmse", Inf, -Inf))
+        # If no row was found in the `perf` tibble for the selected metric, we
+        # return positive/negative infinity again to avoid affecting rankings.
+        } else {
+          return(val)
+          # I have now pulled out the wanted metric for a given CV fold. 
+        }
+      })
+
+      best_folds <- if (metric == "rmse") {
+        # I now sort the metrics from each fold. For RMSE, I sort in ascending
+        # order as is the default, because lower values of RMSE are better.
+        order(metric_values)[1:top_n]
+      } else {
+        order(-metric_values)[1:top_n]
+        # For r-squared, I sort in descending order using the negation operator 
+        # because greater values are better.
+      }
+
+      top_vars <- var_list[best_folds]
+      # I extract the vectors of selected variables from top-performing folds.
+      top_freq <- sort(table(unlist(top_vars)), decreasing = TRUE)
+      # Again, I flatten the list from the previous line into a single vector so
+      # that I can use `table()` to count how often each variable was selected 
+      # across the top X folds (where X is set via the `top_n` argument).
+
+      cat(paste0(
+        "Top ", label, " variables in best ", top_n, " folds (", metric, "):\n"))
+        # This prints a clean console message like this: "Top INTERP variables 
+        # in best 10 folds (rmse). `label` will be either "INTERP" or "PRED" 
+        # depending on the input. `top_n` once again tells us we selected the 
+        # X top-performing folds.`\n` just moves the cursor to the next
+        # line so the next output appears cleanly.
+
+      print(top_freq)
+      invisible(top_freq)
+      # These two lines are used to handle cases where a function call is
+      # assigned to an object vs cases where it is not. When assigned to an
+      # object, `print(top_freq)` explicitly prints the output, which is not
+      # default behavior when assigning a function call to an object. However,
+      # when NOT assigned to an object, `print(top_freq)` would result in this
+      # output being printed twice since R by default prints the last returned
+      # object (`top_freq`). Thus, in this case, `invisible()` shuts down the
+      # "automatic" printing so that only our explicit `print()` call works.
+}
+
+
+summarize_top_variables(
+  output_object = output, which = "interp", metric = "rsq", top_n = 15)
+
+```
+
+VSURF suggests that the best model would contain two variables, `PISA_ME` and `sex`. Keep in mind this is the most powerful predictive model with the fewest variables. Thus, sex may explains a lot more of the variance than a variable like self-concept when self-efficacy is included in the model (and in fact, including all three may again lead to a less parsimonious model, or worse predictions).
+
+Let's work it out in a random forest paradigm for fun. This should hopefully show us the predictive benefit of using such an automated system to create a parsimonious model.
+
+***VSURF Selection Model***
+
+```{r}
+#| label: Building random forests out of the VSURF-selected variables
+
+control <- trainControl(
+  method = "repeatedcv", number = 10, repeats = 3,
+  search = "grid"
+)
+
+tunegrid <- expand.grid(.mtry = c(2:3)) 
+set.seed(47)
+rf_strongestvariables <- train(
+  sum_arith_perf ~ sex + score_PISA_ME +
+    score_SDQ_M,
+  data = scaled_training, method = "rf", importance = TRUE,
+  tuneGrid = tunegrid, trControl = control
+)
+print(rf_strongestvariables)
+varImpPlot(rf_strongestvariables$finalModel, type = 1)
+# type 1 refers to estimates following perturbation.
 
 
 
+tunegrid <- expand.grid(.mtry = c(2:2)) 
+set.seed(48)
+rf_strongestvariables2 <- train(sum_arith_perf ~ sex + score_SDQ_M,
+  data = scaled_training, method = "rf", importance = TRUE,
+  tuneGrid = tunegrid, trControl = control
+)
+print(rf_strongestvariables2)
+
+varImpPlot(rf_strongestvariables2$finalModel, type = 1)
+# type 1 refers to estimates following perturbation.
 
 
+set.seed(49)
+rf_strongestvariables3 <- train(sum_arith_perf ~ score_PISA_ME + score_SDQ_M,
+  data = scaled_training, method = "rf", importance = TRUE,
+  tuneGrid = tunegrid, trControl = control
+)
+print(rf_strongestvariables3)
+
+varImpPlot(rf_strongestvariables3$finalModel, type = 1)
+# type 1 refers to estimates following perturbation.
 
 
+# this will be the VSURF selected model.
+set.seed(50)
+rf_strongestvariables4 <- train(sum_arith_perf ~ score_PISA_ME + sex,
+  data =
+    scaled_training, method = "rf", importance = TRUE, tuneGrid = tunegrid,
+  trControl = control
+)
+print(rf_strongestvariables4)
+
+varImpPlot(rf_strongestvariables4$finalModel, type = 1)
+# type 1 refers to estimates following perturbation.
+
+```
+
+As you can see, the model with sex and self-efficacy has by far the lowest `MSE` and the best R-squared (though the model with `sex` and `SDQ_M` seemed to do fine, probably because `PISA_ME` and `SDQ_M` cover a lot of the same ground). Its r-squared is comparable to models with many more variables, and its `MSE` isn't too bad either. It's safe to say that this is definitely the most parsimonious model in the sense that it explains a ton of the variance with only two variables. Adding a couple more variables should likely increase raw predictive power, but if you're looking to identify the model with the absolute best predictive power in the fewest variables, you likely need to look no further.
+
+## Boruta {#sec-boruta-chapter}
+
+#### 
+
+MAYBE all this SHOULD GO IN BORUTA SECTION There is an additional standard of rigor I set up for my analysis below that slightly complexifies my discussion: nested cross-validation. I did not use nested CV in my original "Random Forest" post for simplicity, but this process is ubiquitous in machine learning modeling to combat bias. The idea behind the inferiority of non-nested CV that if you use the same cross-validation splits to both tune (hyperparameters and features) *and* evaluate model performance, the evaluation will be optimistically biased. If you test a thousand combinations of features and parameters on a fixed set of validation splits, the single model that appears to perform the best may simply be the one that happens to fit the specific splits well, rather than truly be the most generalizable model. Nested CV, through including a second, "outer" CV loop only used for evaluating the performance of the models selected in the "inner" CV loop, helps give a clearer picture of the stability of variable selection and tuning by showing whether features or parameter values are consistently chosen across folds and generalize well. To learn more about nested CV, click [here](https://stats.stackexchange.com/questions/564878/nested-cross-validation-how-does-the-outer-loop-work) for an intuitive explanation.
+
+[Boruta algorithm](https://cran.r-project.org/web/packages/Boruta/index.html) Boruta is a package in R that conducts feature selection using its own algorithm. In a nutshell, Boruta iteratively cuts features that appear to provide less importance to the model than random probes. It uses a similar permutation-based method, however, to determine prediction error increase when a variable's values are permuted.
+
+```{r}
+#| label: Running Boruta package
+# Load necessary libraries
+library(Boruta)
+library(randomForest)
 
 
+# Set the seed for reproducibility
+set.seed(123)
+boruta_output <- Boruta(
+  sum_arith_perf ~ score_AMAS_total + sex + age + score_BFI_N +
+    score_GAD + score_PISA_ME + score_STAI_state_short + score_TAI_short +
+    score_SDQ_M + score_SDQ_L,
+  data = scaled_training, doTrace = 2,  # to set up the cross validation
+  maxRuns=150, #max number of times it tries to run the importance.
+  ) 
+ # 2 specifies most detail.
+
+# Print the results
+print(boruta_output)
+# View final decision on variable importance
+print(boruta_output$finalDecision)
+
+# Plotting the importance
+plot(boruta_output, las = 2, cex.axis = 0.7)
+
+```
+
+As you can see, Boruta reports pretty much what we expected with regards to unimportant and important variables. Boruta reports `SDQ_L`, `BFI_N`, and `TAI_short` as the least important variables, which aligns with our pseudo-feature selection process we underwent earlier. Even more interestingly, we had originally determined that sex, math self-efficacy, math self-concept, and at least one of the anxiety variables (except test anxiety) seemed to be crucial to predicting arithmetic performance. We can see that that lines up with Boruta's output: the three important variables are above all others while `AMAS_total` and test anxiety are also confirmed, though AMAS seems to be a bit more powerful. Thus, our backwards selection procedure did seem to be good for intuitively identifying the most important variables. However, as mentioned earlier, backwards selection is dangerous for individual variable interpretation, and automated methods are almost always more statistically valid.
+
+Alright just for fun: one more Boruta run after removing the three "worst" variables.
+
+***Second Boruta Run***
+
+```{r}
+#| label: Second run of Boruta
+# Load necessary libraries
+library(Boruta)
+library(randomForest)
 
 
+# Set the seed for reproducibility
+set.seed(123)
+boruta_output2 <- Boruta(
+  sum_arith_perf ~ score_AMAS_total + sex + age +
+    score_GAD + score_PISA_ME + score_STAI_state_short +
+    score_SDQ_M,
+  data = scaled_training, doTrace = 2, #2 specifies most detail.
+  #default maxRun is 100, btw
+  ) 
 
+# Print the results
+print(boruta_output2)
 
+# View final decision on variable importance
+print(boruta_output2$finalDecision)
 
+# Plotting the importance
+plot(boruta_output2, las = 2, cex.axis = 0.7)
+```
 
+One more piece of the puzzle --- Boruta does indeed seem to find that age is tentatively a useful predictor. This somewhat aligns with our earlier findings that age continued to pop up in our recursively smaller models, but eventually became the least important predictor. It probably isn't included in the best prediction models or even the "true subset of variables" models, but still nice to know.
 
+## "Knockoff" Variable Importance Measures
 
+Lastly, I'm going to provide code for a recursive feature selection (RFE) process through the caret package. It starts by fitting a model to all predictors. It then removes the worst predictor from each model, then it refits the model and reevaluates the model fit and the descriptive statistics for each predictor in the model, now sans the removed variable. This process repeats until the model fit is not improved by removing a variable. RFE is really just backwards selection, so it is quite simple. However, any kind of stepwise selection procedure (even ) are far from the best choice to do feature selection for most models. Instead, use a better automated method, like the ones detailed above or best subsets regression (where the algorithm runs every single model that could be created from X predictor variables and selects the one with the best model fit), or use your knowledge of the field and to select the variables you think will have an effect on the DV a priori.
 
+The RFE takes several hours to complete, maybe more if your machine isn't too powerful. Keep that in mind when you're running it.
+
+```{r}
+#| label: RFE for Prediction
+#| warning: false
+# Load necessary libraries
+library(caret)
+
+# Define control for RFE
+control <- rfeControl(
+  method = "repeatedcv", # Use repeated cross-validation
+  number = 10, # Number of folds
+  repeats = 3, # Number of repetitions
+  returnResamp = "final" # Return the final results
+)
+
+# Set seed for reproducibility
+set.seed(123)
+# Run RFE
+rfe_output <- rfe(
+  x = scaled_training[, c(
+    "score_AMAS_total", "sex", "age", "score_BFI_N",
+    "score_GAD", "score_PISA_ME", "score_STAI_state_short",
+    "score_TAI_short", "score_SDQ_M", "score_SDQ_L"
+  )],
+  y = scaled_training$sum_arith_perf,
+  sizes = c(1:10), # Specify the number of predictors to evaluate
+  rfeControl = control,
+  method = "rf" # Use random forest as the model
+)
+
+# Print results
+print(rfe_output)
+
+# Looks like the best model was with all 10 variables.
+rfe_output$fit
+
+rfe_output$optVariables
+
+# mean importance by variable
+# Extract the variable importance information from the RFE object
+rfe_output$variables # this is importance across all subsets
+caret::varImp(rfe_output) # this is importance in final model
+```
+
+Spoilers --- the best predictive performance seems to be with all ten variables, like we sort of anticipated. It seems that due to low effect sizes for most variables and the fact that some variables, like certain anxiety variables or age, may not have a strong correlation with the DV (or even that much importance in random forest models), but they seem to be very useful for prediction, hopefully not by overfitting on the random noise and creating false patterns, but by hopefully acting as suppressors that improve the performance of other variables in the set (which we will again test using test data).
+
+Now, in a second addendum entitled "Random Forest Test Prediction", we will test the predictive accuracy of all models created for the original "Intermediate Models...Random Forest and LASSO" document as well as all models created in this addendum above. We will do so by evaluating the model fit (using r-squared) on the test set of data.
+
+### Conditional Inference Forests
+
+(We will demonstrate an unbiased advanced method of obtaining variable importance measures using conditional inference forests at the end of this document. THIS IS OUTSIDE THE SCOPE OF THE PAPER BUT YOU SHOULD PUT THIS AS SOME KIND OF APPENDIX OR ENDING)
+
+explain knockoff vimps too!
+
+```{r}
 library(rpart)
 library(rpart.plot)
 library(ggplot2
         )
-
 
 
 # Extract variable importance scores
@@ -201,298 +901,3 @@ plot(linearrfmodel2)
 
 
 ```
-
-As an addendum to `Introducing Machine Learning Models for Psychologists - Random Forest`, I will walk through a manual example of a variable selection procedure described in the literature for random forest as well as provide several examples of explicit automated methods for variable selection. VSURF, the first method I will describe, essentially uses backward stepwise selection followed by forward selection based on variable importance (using a basic definition as we used above being, depending on the task, the difference between MSE/misclassification rate after permuting each predictor). There have been several methods for variable selection described in the literature, however, a recent simulation study demonstrated that VSURF often demonstrates some of the best performance for classification tasks (Speiser et al.), which may extend to regression. However, it is worth noting that VSURF is prediction oriented and as such, accepts the risk of producing false negatives.
-
-(We will demonstrate an unbiased advanced method of obtaining variable importance measures using conditional inference forests at the end of this document.)
-
-An aside on scaling variables: We will choose to standardize our variables using the `scale()` function, which you may recognize. The `scale()` function will center (subtract mean from the value for a mean of 0) and scale (divide value by its standard deviation for an SD of 1) our continuous predictors. We don't include categorical variables. We'll also go ahead and get started by creating our first random forest model. Let's try using the `caret` package, a relatively general machine learning package.
-
-(Another function that can be used to standardize is the `preProcess()` function in the `caret` package, and it may be better or easier to use for your purposes. I just like `scale()`.)
-
-***Importing the Data*** Below, I will reprint the data import and cleaning code from the original blog post regarding variable selection in Random Forest models. We are again using the AMATUS dataset.
-
-```{r}
-#| label: Load packages, clean data
-#| warning: false
-library(here)
-
-library(tidyverse)
-library(caret)
-library(readxl)
-library(readr)
-library(ggplot2)
-library(randomForest)
-
-here::i_am("Dr. Lai Feature Selection Project 9.13.24.rproj")
-#If you'd like to, you can manually set your path with the command above. #I've set it to my rproj file
-#Otherwise, just check with the following
-#command:
-here::here()
-
-# adjust as needed.
-file_path <- normalizePath(here::here("Main Script/OSF archive/AMATUS_dataset.csv"))
-
-
-amatus <- read_csv2(file_path, c("", "NA"), col_names = TRUE) 
-
-View(amatus)
-table(amatus$sum_arith_perf)
-
-amatusclean <- amatus[!is.na(amatus$sum_arith_perf), ] 
-
-amatusclean <- amatusclean[!(amatusclean$sample %in% 
-c("german_teachers", "belgian_teachers")), ] 
-
-amatusclean$sex <- as.factor(amatusclean$sex)
-amatusclean$age_range <- as.factor(amatusclean$age_range)
-amatusclean$breaks <- as.factor(amatusclean$breaks)
-amatusclean$honesty <- as.factor(amatusclean$honesty)
-amatusclean$native_speaker <- as.factor(amatusclean$native_speaker)
-amatusclean$noise <- as.factor(amatusclean$noise)
-
-amatusclean <- amatus[!is.na(amatus$sum_arith_perf), ] 
-amatusclean <- amatusclean[!(amatusclean$sample %in% 
-c("german_teachers", "belgian_teachers")), ] 
-
-
-library(caret)
-set.seed(39) 
-inTrain <- createDataPartition(amatusclean$sum_arith_perf,
-  p = 0.7, list = FALSE
-)
-
-# create training vs test data.
-training <- amatusclean[inTrain, ]
-test <- amatusclean[-inTrain, ]
-View(training)
-View(test)
-
-numeric_predictors <- c(
-  "score_BFI_N", "score_AMAS_total", "age", "score_GAD",
-  "score_PISA_ME", "score_STAI_state_short",
-  "score_TAI_short", "score_SDQ_L", "score_SDQ_M"
-)
-categorical_variable <- "sex"
-response_variable <- "sum_arith_perf"
-
-
-scaled_training <- training %>%
-  mutate(across(all_of(numeric_predictors), ~ scale(.) %>% as.vector())) %>%
-  select(all_of(numeric_predictors), all_of(categorical_variable), all_of(response_variable)) 
-
-```
-
-***First VSURF Run***
-
-```{r}
-#| label: Automated variable selection example
-if (!require(VSURF)) {
-  install.packages("VSURF",
-    repos = "http://cran.us.r-project.org"
-  )
-}
-
-library(VSURF)
-rm(x)
-#we don't really care about only testing a few mtry values at this point 
-#since the best has been mtry=2 every time, so.
-set.seed(46)
-vamatus <- VSURF(sum_arith_perf ~ score_AMAS_total + sex +
-  age + score_BFI_N +
-  score_GAD + score_PISA_ME +
-  score_STAI_state_short + score_TAI_short +
-  score_SDQ_M +
-  score_SDQ_L, data = scaled_training, na.action = na.omit)
-
-View(training)
-
-print(vamatus$varselect.pred) # predictors vsurf selected at final stage.
-```
-
-VSURF suggests that the best model would contain two variables, `PISA_ME` and `sex`. Keep in mind this is the most powerful predictive model with the fewest variables. Thus, sex may explains a lot more of the variance than a variable like self-concept when self-efficacy is included in the model (and in fact, including all three may again lead to a less parsimonious model, or worse predictions).
-
-Let's work it out in a random forest paradigm for fun. This should hopefully show us the predictive benefit of using such an automated system to create a parsimonious model.
-
-***VSURF Selection Model***
-
-```{r}
-#| label: Building random forests out of the VSURF-selected variables
-
-control <- trainControl(
-  method = "repeatedcv", number = 10, repeats = 3,
-  search = "grid"
-)
-
-tunegrid <- expand.grid(.mtry = c(2:3)) 
-set.seed(47)
-rf_strongestvariables <- train(
-  sum_arith_perf ~ sex + score_PISA_ME +
-    score_SDQ_M,
-  data = scaled_training, method = "rf", importance = TRUE,
-  tuneGrid = tunegrid, trControl = control
-)
-print(rf_strongestvariables)
-varImpPlot(rf_strongestvariables$finalModel, type = 1)
-# type 1 refers to estimates following perturbation.
-
-
-
-tunegrid <- expand.grid(.mtry = c(2:2)) 
-set.seed(48)
-rf_strongestvariables2 <- train(sum_arith_perf ~ sex + score_SDQ_M,
-  data = scaled_training, method = "rf", importance = TRUE,
-  tuneGrid = tunegrid, trControl = control
-)
-print(rf_strongestvariables2)
-
-varImpPlot(rf_strongestvariables2$finalModel, type = 1)
-# type 1 refers to estimates following perturbation.
-
-
-set.seed(49)
-rf_strongestvariables3 <- train(sum_arith_perf ~ score_PISA_ME + score_SDQ_M,
-  data = scaled_training, method = "rf", importance = TRUE,
-  tuneGrid = tunegrid, trControl = control
-)
-print(rf_strongestvariables3)
-
-varImpPlot(rf_strongestvariables3$finalModel, type = 1)
-# type 1 refers to estimates following perturbation.
-
-
-# this will be the VSURF selected model.
-set.seed(50)
-rf_strongestvariables4 <- train(sum_arith_perf ~ score_PISA_ME + sex,
-  data =
-    scaled_training, method = "rf", importance = TRUE, tuneGrid = tunegrid,
-  trControl = control
-)
-print(rf_strongestvariables4)
-
-varImpPlot(rf_strongestvariables4$finalModel, type = 1)
-# type 1 refers to estimates following perturbation.
-
-```
-
-As you can see, the model with sex and self-efficacy has by far the lowest `MSE` and the best R-squared (though the model with `sex` and `SDQ_M` seemed to do fine, probably because `PISA_ME` and `SDQ_M` cover a lot of the same ground). Its r-squared is comparable to models with many more variables, and its `MSE` isn't too bad either. It's safe to say that this is definitely the most parsimonious model in the sense that it explains a ton of the variance with only two variables. Adding a couple more variables should likely increase raw predictive power, but if you're looking to identify the model with the absolute best predictive power in the fewest variables, you likely need to look no further.
-
-## Boruta
-
-Boruta is a package in R that conducts feature selection using its own algorithm. In a nutshell, Boruta iteratively cuts features that appear to provide less importance to the model than random probes. It uses a similar permutation-based method, however, to determine prediction error increase when a variable's values are permuted.
-
-```{r}
-#| label: Running Boruta package
-# Load necessary libraries
-library(Boruta)
-library(randomForest)
-
-
-# Set the seed for reproducibility
-set.seed(123)
-boruta_output <- Boruta(
-  sum_arith_perf ~ score_AMAS_total + sex + age + score_BFI_N +
-    score_GAD + score_PISA_ME + score_STAI_state_short + score_TAI_short +
-    score_SDQ_M + score_SDQ_L,
-  data = scaled_training, doTrace = 2,  # to set up the cross validation
-  maxRuns=150, #max number of times it tries to run the importance.
-  ) 
- # 2 specifies most detail.
-
-# Print the results
-print(boruta_output)
-# View final decision on variable importance
-print(boruta_output$finalDecision)
-
-# Plotting the importance
-plot(boruta_output, las = 2, cex.axis = 0.7)
-
-```
-
-As you can see, Boruta reports pretty much what we expected with regards to unimportant and important variables. Boruta reports `SDQ_L`, `BFI_N`, and `TAI_short` as the least important variables, which aligns with our pseudo-feature selection process we underwent earlier. Even more interestingly, we had originally determined that sex, math self-efficacy, math self-concept, and at least one of the anxiety variables (except test anxiety) seemed to be crucial to predicting arithmetic performance. We can see that that lines up with Boruta's output: the three important variables are above all others while `AMAS_total` and test anxiety are also confirmed, though AMAS seems to be a bit more powerful. Thus, our backwards selection procedure did seem to be good for intuitively identifying the most important variables. However, as mentioned earlier, backwards selection is dangerous for individual variable interpretation, and automated methods are almost always more statistically valid.
-
-Alright just for fun: one more Boruta run after removing the three "worst" variables.
-
-***Second Boruta Run***
-
-```{r}
-#| label: Second run of Boruta
-# Load necessary libraries
-library(Boruta)
-library(randomForest)
-
-
-# Set the seed for reproducibility
-set.seed(123)
-boruta_output2 <- Boruta(
-  sum_arith_perf ~ score_AMAS_total + sex + age +
-    score_GAD + score_PISA_ME + score_STAI_state_short +
-    score_SDQ_M,
-  data = scaled_training, doTrace = 2, #2 specifies most detail.
-  #default maxRun is 100, btw
-  ) 
-
-# Print the results
-print(boruta_output2)
-
-# View final decision on variable importance
-print(boruta_output2$finalDecision)
-
-# Plotting the importance
-plot(boruta_output2, las = 2, cex.axis = 0.7)
-```
-
-One more piece of the puzzle --- Boruta does indeed seem to find that age is tentatively a useful predictor. This somewhat aligns with our earlier findings that age continued to pop up in our recursively smaller models, but eventually became the least important predictor. It probably isn't included in the best prediction models or even the "true subset of variables" models, but still nice to know
-
-## RFE for Prediction
-
-Lastly, I'm going to provide code for a recursive feature selection (RFE) process through the caret package. It starts by fitting a model to all predictors. It then removes the worst predictor from each model, then it refits the model and reevaluates the model fit and the descriptive statistics for each predictor in the model, now sans the removed variable. This process repeats until the model fit is not improved by removing a variable. RFE is really just backwards selection, so it is quite simple. However, any kind of stepwise selection procedure (even ) are far from the best choice to do feature selection for most models. Instead, use a better automated method, like the ones detailed above or best subsets regression (where the algorithm runs every single model that could be created from X predictor variables and selects the one with the best model fit), or use your knowledge of the field and to select the variables you think will have an effect on the DV a priori.
-
-The RFE takes several hours to complete, maybe more if your machine isn't too powerful. Keep that in mind when you're running it.
-
-```{r}
-#| label: RFE for Prediction
-#| warning: false
-# Load necessary libraries
-library(caret)
-
-# Define control for RFE
-control <- rfeControl(
-  method = "repeatedcv", # Use repeated cross-validation
-  number = 10, # Number of folds
-  repeats = 3, # Number of repetitions
-  returnResamp = "final" # Return the final results
-)
-
-# Set seed for reproducibility
-set.seed(123)
-# Run RFE
-rfe_output <- rfe(
-  x = scaled_training[, c(
-    "score_AMAS_total", "sex", "age", "score_BFI_N",
-    "score_GAD", "score_PISA_ME", "score_STAI_state_short",
-    "score_TAI_short", "score_SDQ_M", "score_SDQ_L"
-  )],
-  y = scaled_training$sum_arith_perf,
-  sizes = c(1:10), # Specify the number of predictors to evaluate
-  rfeControl = control,
-  method = "rf" # Use random forest as the model
-)
-
-# Print results
-print(rfe_output)
-
-# Looks like the best model was with all 10 variables.
-rfe_output$fit
-
-rfe_output$optVariables
-
-# mean importance by variable
-# Extract the variable importance information from the RFE object
-rfe_output$variables # this is importance across all subsets
-caret::varImp(rfe_output) # this is importance in final model
-```
-
-Spoilers --- the best predictive performance seems to be with all ten variables, like we sort of anticipated. It seems that due to low effect sizes for most variables and the fact that some variables, like certain anxiety variables or age, may not have a strong correlation with the DV (or even that much importance in random forest models), but they seem to be very useful for prediction, hopefully not by overfitting on the random noise and creating false patterns, but by hopefully acting as suppressors that improve the performance of other variables in the set (which we will again test using test data).
-
-Now, in a second addendum entitled "Random Forest Test Prediction", we will test the predictive accuracy of all models created for the original "Intermediate Models...Random Forest and LASSO" document as well as all models created in this addendum above. We will do so by evaluating the model fit (using r-squared) on the test set of data.

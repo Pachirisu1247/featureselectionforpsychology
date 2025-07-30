@@ -1,0 +1,184 @@
+---
+title: "Addendum to Random Forest - Methods for Variable Selection"
+author: "Francisco N. Ramos"
+date: today
+format:
+  html:
+    number-sections: true
+    toc: true        
+    toc-depth: 3   
+    toc-float: true
+    toc-scroll: true
+    
+knitr:
+  opts_chunk: 
+    collapse: true
+    echo: true
+    results: "markup"
+    message: true
+    warning: true
+    R.options:
+      knitr.graphics.auto_pdf: true
+---
+
+```{r setup, include=FALSE}
+# Set the theme globally for all plots
+library(ggplot2)
+library(here)
+library(tidyverse)
+library(readr)
+theme_set(theme_minimal())
+```
+
+# Addendum: Methods for Variable Selection - Random Forest
+
+## Introduction
+
+As an addendum to [`Introducing Machine Learning Models for Psychologists - Random Forest`](https://mmmlab.rbind.io/posts/2025-03-25-random-forest/), I will demonstrate several examples of formalized variable selection (also called feature selection) procedures described in the literature for random forest models. Please read the original post first if you have not done so already. The feature selection step, which may be carried out before (or during) model tuning, consists of choosing which variables from a complete dataset to include in a model. This step was omitted in the original blog post on fitting random forest models for didactic purposes. However, the performance of finalized models produced in this `Methods for Variable Selection` addendum and the original `Introducing Machine Learning Models for Psychologists - Random Forest` post will be assessed on a hold-out test dataset in a forthcoming `Predictions` addendum to identify the techniques and parameters resulting in the models best predictive of the test set.
+
+There are several reasons as to why variable selection is often performed when fitting a machine learning model such as a random forest, despite the common application of random forest in modeling *p* $\ggg$ *n* situations. To name a few examples, first, it is computationally intensive and often impractical to analyze an excessively large set of predictors, which is why finding a subset of predictors that offers similar or even improved model performance to the complete set of predictors is valuable (Chowdhury & Turin 2020). Second, it is unlikely that all collected variables in a dataset provide predictive value, and as such modeling with the complete set of predictors can overfit on noise in the training data or lower the chance that important predictors are selected at each split (recall the hyperparameter `mtry`, the number of candidate variables selected at each tree split). Finally, including too many predictors that are strongly correlated with one another but differ in their relationship with the DV can lead the model to misinterpret the relative importance of each variable - we revisit this in the following section. In fact, if possible, it is often preferable to begin variable selection building up, i.e. begin with only the predictors that expert opinion or research deem important to the outcome to avoid including too many irrelevant predictors.
+
+Lastly, there is an important distinction to be made of whether one is performing feature selection for what I will call *prediction* or *interpretation*. Feature selection for *prediction* indicates that you are interested in finding a subset of predictors from the full dataset that produce the best possible classification or regression results (Kursa & Rudnicki, 2010). Many machine learning models exhibit decreased prediction when too many predictors, particularly irrelevant predictors, are included in the model. Failure to perform feature selection on a large dataset can encourage future collection of unnecessary data that barely improves or even worsens prediction. Feature selection for *interpretation*, instead, indicates that you are primarily interested in selecting *all* predictors that are relevant to the DV (Genuer et al. 2010). This signifies that you want to understand the mechanisms behind the subject at hand by identifying all variables that can impact the outcome (even if correlated with other predictors). I revisit these aims later on, particularly when discussing the `Boruta` package.
+
+### Variable Selection Methods to be Reviewed
+
+Essentially all statistical software for a random forest model can output variable importance scores (VIMPs), which I refer to as *default* VIMPs. These default scores are usually either calculated in one of two ways: "impurity", the total decrease in the node impurity (Gini impurity for classification, response variance for regression) when a variable is used for splitting across all trees; or the more robust "permutation" VIMP, the decrease in model performance when a variable's values are randomly shuffled in the "out-of-bag" (OOB) samples, breaking its association with the outcome variable.
+
+**Unfortunately**, despite their prominence in the medical and psychological literature utilizing random forest analyses, there are several well-documented sources of bias in default VIMPs that may impact their interpretation. First, differences in the range of potential values that predictors take on biases the calculation of their importance scores, even for uninformative predictors [-@strobl_bias_2007]. Although after many runs, two uninformative predictors will display unbiased permutation-based default VIMPs *on average* (mean=0), the predictor with a wider range of values may illusorily appear much more or less important in a single run because the variance of its score is greater. The mean score for impurity-based default VIMPs, on the other hand, *IS* also biased over many runs in addition to its variance. There are two other key potential sources of bias: default importance measures can inflate the importance of features that are highly correlated with other features but less correlated with the DV, and the bootstrap aggregation method central to random forest also appears to introduce bias towards variables with a wider range of values when sampled with replacement. Permutation-based VIMPs improve upon impurity-based methods, but retain unwanted properties.
+
+Because "default" variable importance measures are still commonly seen in the literature and to demonstrate how complex but unbiased feature selection methods supersede more simple but flawed methods, I first describe two algorithms that attempt to build upon default VIMPs to create more robust feature selection processes. These are the fairly computationally light `VSURF` and `Boruta`. To combat bias in score variance, I follow suggestions by Strobl and colleagues [-@strobl_bias_2007] to test the stability of the results using various forms of cross-validation (CV). Afterwards, I demonstrate a more intensive modeling alternative to random forest called conditional inference forest, designed to correct for bias in VIMPs stemming from differences in variable range (though possibly only when sampled without replacement). Finally, I finish with a brief example of recently-described alternative VIMP metrics entitled "knockoff" VIMPs, which are simulated versions of a predictor that have similar distributions and correlations as the original predictor but no association with the outcome. The "knockoff" method is computationally intensive but creates much more rigorous VIMPs.
+
+(There are many random forest feature selection methods described for use with default VIMPs (Speiser et al. 2013). Although `VSURF` and `Boruta` are relatively simple and powerful for many datasets, I encourage the reader to search for more options if desired - to give two examples, the [randomForestSRC](https://cran.r-project.org/web/packages/randomForestSRC/index.html) and [varSelRF](https://cran.r-project.org/web/packages/varSelRF/index.html) packages.
+
+## Notes on Scaling and Intercorrelated Predictors
+
+As stated in my original blog post, standardization of predictors is not required for random forest models, as they split based on the ordering of a variable's values rather than its scale. You may consider coding your ordinal variable with a small range of values as categorical, especially if its relationship with the DV appears irregular, but this loses ordering information and I choose not to do so for this analysis.
+
+In a real research setting, I would first consider manually removing predictors that strongly correlate with other predictors yet show little apparent relationship with the DV in order to reduce the aforementioned bias in VIMPs caused by modeling many correlated predictors. However, because random forest models and their VIMPs are commonly used in such situations and I plan to demonstrate the superiority of conditional and "knockoff" methods to adjust for bias, I begin with the same full set of 20 predictors used in my original blog post for didactic purposes.
+
+Lastly, there is the question of whether to use unscaled VIMPs or their scaled equivalents (divided by standard deviation), as most packages differ in whether they have scaling importance scores as TRUE or FALSE by default. Strobl and colleagues (2007, 2008) note that scaled variable importance appears to be biased by the number of trees grown in the model and recommend not interpreting scaled scores in most cases. Thus, I rely on unscaled importance scores for interpretation.
+
+## Importing the Data
+
+For this addendum, I will build around 6 final models - 2 for each of the three variable selection methods where I use default vs more tuned hyperparameters, which I pull from my original blog post.
+
+Below, I will reprint the data import and cleaning code from the original blog post, [`Introducing Machine Learning Models for Psychologists - Random Forest`](https://mmmlab.rbind.io/posts/2025-03-25-random-forest/), regarding variable selection in Random Forest models. We are again using the AMATUS dataset and the 20 variables detailed in that post.
+
+I have loaded all libraries I do not emphasize in a hidden code chunk at the top of this page, so when recreating my code, make sure to install and/or load necessary libraries when prompted.
+
+```{r}
+#| label: Load packages, clean data
+#| warning: false
+here::i_am("Dr. Lai Feature Selection Project 9.13.24.rproj")
+# I manually set "here" to the folder containing my rproj file.
+
+file_path <- normalizePath(here::here(
+  "Main Script/OSF archive/AMATUS_dataset.csv"
+))
+# Also adjust this as needed. Function from base R.
+
+# Importing dataset
+amatus <- readr::read_csv2(file_path, c("", "NA"), col_names = TRUE)
+# Note that the `c()` function is defining
+# what NA values look like for the import function.
+
+View(amatus)
+# View the data.
+
+amatusclean <- amatus[!is.na(amatus$sum_arith_perf), ]
+# Removing the individuals who did not complete the performance test in order
+# as instructed. Using simple subsetting.
+amatusclean <- amatusclean[!(amatusclean$sample %in%
+  c("german_teachers", "belgian_teachers")), ]
+# Removing the 2 teacher samples from the dataset, as I am only # interested in
+# the student sample.
+
+View(amatusclean)
+
+# Data cleaning (using tidyverse syntax this time around):
+amatusclean <- amatusclean %>%
+  dplyr::filter(!is.na(sum_arith_perf)) %>%
+  dplyr::mutate(across(c(
+    sex, age_range, breaks, honesty, native_speaker, noise
+  ), as.factor))
+# `filter()` removes the individuals who did not complete the performance test
+# in order as instructed. `mutate()` applies the `as.factor()` function to all
+# categorical/factor variables.
+
+# I also want to reverse the order of the math grade variable so a 1 is the
+# worst grade for simplicity to match every other variable, where lower
+# values correspond to having "less" of or being "worse" at the concept.
+
+amatusclean <- amatusclean %>%
+  dplyr::mutate(math_grade = recode(math_grade,
+    `1` = 6,
+    `2` = 5,
+    `3` = 4,
+    `4` = 3,
+    `5` = 2,
+    `6` = 1
+  ))
+View(amatusclean)
+
+invisible(colSums(is.na(amatusclean)))
+# It appears there is only one NA value in the variables of interest from the
+# dataset - in the math load variable. Remove the `invisible()` function from
+# the line above to print the results and see for yourself. For simplicity,
+# I will just drop this value. There are 734 data points now, as demonstrated.
+amatusclean <- subset(amatusclean, !is.na(math_load))
+nrow(amatusclean)
+
+
+# Let's also isolate the variables in objects now for easier use later on.
+numeric_predictors <- c(
+  "score_BFI_N", "score_AMAS_total", "age", "score_GAD",
+  "score_PISA_ME", "score_STAI_state_short",
+  "score_TAI_short", "score_SDQ_L", "score_SDQ_M",
+  "total_time_minutes", "math_grade", "math_load",
+  "math_inf_program_choice", "liking_math",
+  "liking_science", "liking_humanities",
+  "persistence_math", "persistence_science",
+  "persistence_humanities"
+)
+categorical_variable <- "sex"
+response_variable <- "sum_arith_perf"
+
+all_predictors <- c(numeric_predictors, categorical_variable)
+
+
+# Create training set using same seed as in our original blog post.
+set.seed(39)
+inTrain <- caret::createDataPartition(amatusclean$sum_arith_perf,
+  p = 0.7, list = FALSE
+)
+# 0.7 will sort 70% of the records into training set, 30% into the test
+# set. I selected 0.7 to have a decent number of N in the test set.
+
+# Create training vs test data using subsetting.
+only_vars <- c(all_predictors, response_variable)
+
+training <- amatusclean[inTrain, only_vars]
+test     <- amatusclean[-inTrain, only_vars]
+
+training <- as.data.frame(training)
+test <- as.data.frame(test)
+
+
+```
+
+## VSURF
+
+[`VSURF`](https://cran.r-project.org/web/packages/VSURF/index.html), the first method I describe, uses a three step variable selection procedure - after the first step conservatively removes variables with extreme irrelevance, VSURF will attempt to select all variables potentially related to the DV for *interpretation* purposes---in other words, all variables that could be related to the DV in a particular model. In the optional third step, `VSURF` further selects a subset of variables for *prediction* in an attempt to minimize the number of predictors while maintaining a high level of predictive accuracy.
+
+A recent simulation study demonstrated that `VSURF` (alongside a novel variable selection method by Jiang et al. \[2004\]) appears to demonstrate some of the best performance for classification tasks (Speiser et al.), which may extend to regression. It is worth noting that VSURF generally accepts the risk of producing false negatives with regards to the key variables because it isprediction-oriented. With regards to tuning the model (discussed in my original blog post), VSURF's main function `vsurf()` takes as arguments, among others: `mtry`, `ntree`, and `RFimplem`, the latter of which determines which implementation of random forest R will use. `nodesize` and `samplesize` are not included. Two other arguments, `nmin` and `nsd`, determine the sensitivity of the VSURF selection process at interpretation and prediction, respectively. We will leave these at their default values of 1, but they can be quickly edited after model fitting using `VSURF::tune()` if desired.
+
+My code generally follows the procedure outlined in Kuhn and Johnson (2013), specifically Chapter 19's Algorithm 19.5, substituting `VSURF` for recursive feature elimination. Ideally, we might tune hyperparameters before feature selection to better guide the selection process, or even optimize both steps jointly. However, `VSURF()` cannot be passed preset parameters when using the speedier `ranger` implementation of random forests, and true joint optimization would be computationally intensive. Furthermore, while adding an inner cross-validation loop around `VSURF` or `tuneRanger()` could help ensure truly unbiased performance estimates, especially since `VSURF` does not internally resample, I follow the authors' framework directly here, which does not include nested CV., `tuneRanger()` actually does implement OOB resampling in its algorithm, reducing the need for . We will include the inner loop later in [Chapter @sec-boruta-chapter] for completeness, however.
+
+The run below took my laptop, with the Mac M2 chip, about 5-10 minutes. The script is denser than in my original blog post - I add more comments accordingly.
+
+
+## Boruta {#sec-boruta-chapter}
+
+
+asdasdasd
+
